@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'PROJETO: Rastreamento de Veículos de Emergência. Para QUALQUER tarefa neste repositório, use o agente especializado rastreamento-dev (.claude/agents/rastreamento-dev.md) via a ferramenta Agent. Ele é o agente padrão desta sessão e conhece toda a arquitetura serverless (Vercel + Neon). Leia o CLAUDE.md antes de começar.'"
+          }
+        ]
+      }
+    ]
+  }
+}
