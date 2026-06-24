@@ -1387,6 +1387,9 @@ body::before {
 .response-dist { font-size: 10px; color: #99bbcc; min-width: 48px; text-align: right; }
 .response-tag { font-size: 9px; color: #00ff88; font-weight: 700; letter-spacing: .5px; }
 .response-empty { font-size: 11px; color: #88aabb; margin-top: 6px; }
+.response-item.arrived { background: rgba(0,255,136,0.16); border-left-color: #00ff88; }
+.response-route { filter: drop-shadow(0 0 4px rgba(0,212,255,0.4)); animation: routeDash 1s linear infinite; }
+@keyframes routeDash { to { stroke-dashoffset: -18; } }
 
 /* ============================================
    RED VIGNETTE (applied to body during emergency)
@@ -2017,6 +2020,16 @@ function createPopupContent(v) {
 
 function updateMarkers(vehicleList) {
   vehicleList.forEach(v => {
+    // VTR respondendo a emergencia: posicao controlada pela animacao de resposta,
+    // nao deixar o polling da simulacao puxa-la de volta para a patrulha.
+    if (respondingUnits[v.id]) {
+      if (!markers[v.id]) {
+        markers[v.id] = L.marker(L.latLng(v.lat, v.lng), { icon: createMarkerIcon(v) }).addTo(map);
+      } else {
+        markers[v.id].setIcon(createMarkerIcon(v));
+      }
+      return;
+    }
     const latLng = L.latLng(v.lat, v.lng);
     if (markers[v.id]) {
       // Smooth move
@@ -2189,6 +2202,84 @@ async function triggerEmergency() {
 }
 
 // ============================================
+// RESPOSTA À EMERGÊNCIA — VTRs percorrem a menor rota (OSRM) e CHEGAM ao local
+// ============================================
+const osrmRouter = L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' });
+let respondingUnits = {};   // id -> { coords, cum, totalDist, startTs, displayMs, arrived }
+let responseRoutes = [];    // polilinhas persistentes (nao somem no zoom)
+let responderRAF = null;
+
+// Registra uma VTR respondendo: desenha a rota e inicia o deslocamento ate o local.
+function startResponder(v, route) {
+  const coords = route.coordinates; // [L.LatLng, ...]
+  if (!coords || coords.length < 2) return;
+
+  // Distancia acumulada (metros) ao longo da rota
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) {
+    cum.push(cum[i - 1] + coords[i - 1].distanceTo(coords[i]));
+  }
+  const totalDist = cum[cum.length - 1];
+
+  // Linha de rota PERSISTENTE (polilinha propria — sobrevive a zoom/pan)
+  const poly = L.polyline(coords, {
+    color: getTypeColor(v.type), weight: 4, opacity: 0.85,
+    dashArray: '10,8', className: 'response-route'
+  }).addTo(map);
+  responseRoutes.push(poly);
+
+  // ETA para o painel (menor rota OSRM)
+  responseEtas = responseEtas.filter(x => x.id !== v.id);
+  responseEtas.push({ id: v.id, name: v.name, type: v.type,
+    time: route.summary.totalTime, dist: route.summary.totalDistance, arrived: false });
+  renderResponsePanel();
+
+  // Tempo de exibicao: comprime o ETA real para vermos a chegada (5s..11s),
+  // preservando a ordem (a mais proxima chega primeiro).
+  const displayMs = Math.min(11000, Math.max(5000, route.summary.totalTime * 200));
+  respondingUnits[v.id] = { id: v.id, coords, cum, totalDist, startTs: performance.now(), displayMs, arrived: false };
+
+  if (!responderRAF) responderRAF = requestAnimationFrame(animateResponders);
+}
+
+function posAlong(u, d) {
+  const { cum, coords } = u;
+  let i = 1;
+  while (i < cum.length && cum[i] < d) i++;
+  if (i >= coords.length) return coords[coords.length - 1];
+  const segStart = cum[i - 1], segEnd = cum[i];
+  const t = segEnd > segStart ? (d - segStart) / (segEnd - segStart) : 0;
+  const a = coords[i - 1], b = coords[i];
+  return L.latLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t);
+}
+
+function animateResponders() {
+  const now = performance.now();
+  let active = false;
+  Object.values(respondingUnits).forEach(u => {
+    if (u.arrived) return;
+    active = true;
+    const t = Math.min(1, (now - u.startTs) / u.displayMs);
+    const pos = posAlong(u, t * u.totalDist);
+    if (markers[u.id]) markers[u.id].setLatLng(pos);
+    if (t >= 1) {
+      u.arrived = true;
+      if (markers[u.id]) markers[u.id].setLatLng(u.coords[u.coords.length - 1]);
+      const eta = responseEtas.find(e => e.id === u.id);
+      if (eta) { eta.arrived = true; renderResponsePanel(); }
+    }
+  });
+  responderRAF = active ? requestAnimationFrame(animateResponders) : null;
+}
+
+function clearResponse() {
+  if (responderRAF) { cancelAnimationFrame(responderRAF); responderRAF = null; }
+  respondingUnits = {};
+  responseRoutes.forEach(p => { try { map.removeLayer(p); } catch (e) {} });
+  responseRoutes = [];
+}
+
+// ============================================
 // PAINEL DE RESPOSTA — ETA por VTR (menor rota OSRM)
 // ============================================
 let responseEtas = [];
@@ -2214,14 +2305,18 @@ function hideResponsePanel() {
 function renderResponsePanel() {
   const list = document.getElementById('response-list');
   const sorted = [...responseEtas].sort((a, b) => a.time - b.time);
-  list.innerHTML = sorted.map((r, i) => `
-    <div class="response-item ${i === 0 ? 'nearest' : ''}" style="--c:${getTypeColor(r.type)}">
+  list.innerHTML = sorted.map((r, i) => {
+    const tag = r.arrived
+      ? ' <span class="response-tag">CHEGOU</span>'
+      : (i === 0 ? ' <span class="response-tag">MAIS PROXIMA</span>' : '');
+    return `
+    <div class="response-item ${i === 0 ? 'nearest' : ''} ${r.arrived ? 'arrived' : ''}" style="--c:${getTypeColor(r.type)}">
       <span class="response-rank">${i + 1}</span>
-      <span class="response-name">${r.name}${i === 0 ? ' <span class="response-tag">MAIS PROXIMA</span>' : ''}</span>
-      <span class="response-eta">${fmtEta(r.time)}</span>
+      <span class="response-name">${r.name}${tag}</span>
+      <span class="response-eta">${r.arrived ? '&#10003;' : fmtEta(r.time)}</span>
       <span class="response-dist">${(r.dist / 1000).toFixed(1)} km</span>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 // ============================================
@@ -2263,51 +2358,27 @@ function showEmergencyAlert(entry) {
   // Calculate routes from all OTHER vehicles to the emergency.
   // O OSRM resolve a MENOR rota (caminho minimo sobre o grafo viario) para
   // cada VTR; capturamos o ETA/distancia e ranqueamos a mais proxima.
-  clearRoutes();
+  clearResponse();
   responseEtas = [];
   showResponsePanel(entry.vehicleId);
   vehicles.forEach(v => {
-    if (v.id !== entry.vehicleId) {
-      try {
-        const control = L.Routing.control({
-          waypoints: [
-            L.latLng(v.lat, v.lng),
-            L.latLng(entry.lat, entry.lng)
-          ],
-          router: L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
-          }),
-          lineOptions: {
-            styles: [
-              { color: getTypeColor(v.type), opacity: 0.8, weight: 4, dashArray: '12,8' }
-            ],
-            addWaypoints: false
-          },
-          show: false,
-          addWaypoints: false,
-          draggableWaypoints: false,
-          fitSelectedRoutes: false,
-          createMarker: function() { return null; }
-        }).addTo(map);
-        control.on('routesfound', function(e) {
-          const r = e.routes && e.routes[0];
-          if (!r || !r.summary) return;
-          responseEtas = responseEtas.filter(x => x.id !== v.id);
-          responseEtas.push({
-            id: v.id, name: v.name, type: v.type,
-            time: r.summary.totalTime, dist: r.summary.totalDistance
-          });
-          renderResponsePanel();
-        });
-        routingControls.push(control);
-      } catch(e) {
-        // Routing might fail silently, that's OK
-      }
+    if (v.id === entry.vehicleId) return;
+    try {
+      osrmRouter.route(
+        [{ latLng: L.latLng(v.lat, v.lng) }, { latLng: L.latLng(entry.lat, entry.lng) }],
+        function(err, routes) {
+          if (err || !routes || !routes[0]) return;
+          const route = routes[0];
+          startResponder(v, route);
+        }
+      );
+    } catch (e) {
+      // Routing might fail silently, that's OK
     }
   });
 
   // Auto-dismiss countdown
-  alertCountdown = 10;
+  alertCountdown = 6;
   document.getElementById('alert-countdown').textContent = alertCountdown;
   if (alertTimer) clearInterval(alertTimer);
   alertTimer = setInterval(() => {
@@ -2351,6 +2422,7 @@ function dismissAlert() {
   }
   // Keep routes and circle visible for a bit, then clean up
   setTimeout(() => {
+    clearResponse();
     clearRoutes();
     hideResponsePanel();
     clearYieldWave();
@@ -2362,7 +2434,7 @@ function dismissAlert() {
       map.removeLayer(radarMarker);
       radarMarker = null;
     }
-  }, 5000);
+  }, 6000);
 }
 
 function clearRoutes() {
