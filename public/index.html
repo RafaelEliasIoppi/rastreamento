@@ -1349,6 +1349,45 @@ body::before {
 }
 
 /* ============================================
+   PAINEL DE RESPOSTA (ETA por VTR)
+   ============================================ */
+#response-panel {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  width: 290px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  z-index: 900;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity .4s ease, transform .4s ease;
+  border: 1px solid rgba(0,212,255,0.25);
+}
+#response-panel.active { opacity: 1; transform: translateY(0); }
+.response-title { font-size: 13px; font-weight: 700; color: #00d4ff; letter-spacing: .5px; }
+.response-sub { font-size: 10px; color: #88aabb; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+.response-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; margin-top: 6px; border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border-left: 3px solid var(--c, #00d4ff);
+  font-size: 12px;
+}
+.response-item.nearest {
+  background: rgba(0,255,136,0.10);
+  border-left-color: #00ff88;
+  box-shadow: 0 0 14px rgba(0,255,136,0.22);
+}
+.response-rank { font-weight: 700; opacity: .6; width: 14px; text-align: center; }
+.response-name { flex: 1; color: #eaf6ff; }
+.response-eta { font-weight: 700; color: #00ff88; }
+.response-dist { font-size: 10px; color: #99bbcc; min-width: 48px; text-align: right; }
+.response-tag { font-size: 9px; color: #00ff88; font-weight: 700; letter-spacing: .5px; }
+.response-empty { font-size: 11px; color: #88aabb; margin-top: 6px; }
+
+/* ============================================
    RED VIGNETTE (applied to body during emergency)
    ============================================ */
 #screen-vignette {
@@ -1588,6 +1627,13 @@ body::before {
   <span class="btn-icon">&#9888;</span>
   <span class="btn-text">SOS</span>
 </button>
+
+<!-- ============ RESPONSE ETA PANEL ============ -->
+<div id="response-panel" class="glass">
+  <div class="response-title">&#9889; Resposta &mdash; VTRs a caminho</div>
+  <div class="response-sub">menor rota (OSRM) por viatura</div>
+  <div id="response-list"></div>
+</div>
 
 <!-- ============ EMERGENCY OVERLAY ============ -->
 <div id="emergency-overlay">
@@ -2142,6 +2188,42 @@ async function triggerEmergency() {
 }
 
 // ============================================
+// PAINEL DE RESPOSTA — ETA por VTR (menor rota OSRM)
+// ============================================
+let responseEtas = [];
+
+function fmtEta(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function showResponsePanel(emergencyVehicleId) {
+  const panel = document.getElementById('response-panel');
+  const list = document.getElementById('response-list');
+  list.innerHTML = '<div class="response-empty">Calculando menores rotas&hellip;</div>';
+  panel.classList.add('active');
+}
+
+function hideResponsePanel() {
+  document.getElementById('response-panel').classList.remove('active');
+  responseEtas = [];
+}
+
+function renderResponsePanel() {
+  const list = document.getElementById('response-list');
+  const sorted = [...responseEtas].sort((a, b) => a.time - b.time);
+  list.innerHTML = sorted.map((r, i) => `
+    <div class="response-item ${i === 0 ? 'nearest' : ''}" style="--c:${getTypeColor(r.type)}">
+      <span class="response-rank">${i + 1}</span>
+      <span class="response-name">${r.name}${i === 0 ? ' <span class="response-tag">MAIS PROXIMA</span>' : ''}</span>
+      <span class="response-eta">${fmtEta(r.time)}</span>
+      <span class="response-dist">${(r.dist / 1000).toFixed(1)} km</span>
+    </div>
+  `).join('');
+}
+
+// ============================================
 // EMERGENCY ALERT OVERLAY
 // ============================================
 function showEmergencyAlert(entry) {
@@ -2177,9 +2259,12 @@ function showEmergencyAlert(entry) {
   // Pan to emergency
   map.setView([entry.lat, entry.lng], 14, { animate: true, duration: 1 });
 
-  // Calculate routes from all OTHER vehicles to the emergency
+  // Calculate routes from all OTHER vehicles to the emergency.
+  // O OSRM resolve a MENOR rota (caminho minimo sobre o grafo viario) para
+  // cada VTR; capturamos o ETA/distancia e ranqueamos a mais proxima.
   clearRoutes();
-  const selectedVehicleId = document.getElementById('vehicle-select').value;
+  responseEtas = [];
+  showResponsePanel(entry.vehicleId);
   vehicles.forEach(v => {
     if (v.id !== entry.vehicleId) {
       try {
@@ -2203,6 +2288,16 @@ function showEmergencyAlert(entry) {
           fitSelectedRoutes: false,
           createMarker: function() { return null; }
         }).addTo(map);
+        control.on('routesfound', function(e) {
+          const r = e.routes && e.routes[0];
+          if (!r || !r.summary) return;
+          responseEtas = responseEtas.filter(x => x.id !== v.id);
+          responseEtas.push({
+            id: v.id, name: v.name, type: v.type,
+            time: r.summary.totalTime, dist: r.summary.totalDistance
+          });
+          renderResponsePanel();
+        });
         routingControls.push(control);
       } catch(e) {
         // Routing might fail silently, that's OK
@@ -2256,6 +2351,8 @@ function dismissAlert() {
   // Keep routes and circle visible for a bit, then clean up
   setTimeout(() => {
     clearRoutes();
+    hideResponsePanel();
+    clearYieldWave();
     if (emergencyCircle) {
       map.removeLayer(emergencyCircle);
       emergencyCircle = null;
