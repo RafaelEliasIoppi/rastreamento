@@ -31,6 +31,7 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - `api/init.js` — `POST` cria a tabela `emergencies` (rodar uma vez após configurar o banco)
 - `lib/db.js` — cliente Neon (`sql`) + flag `isConfigured` (banco opcional)
 - `lib/simulation.js` — simulação **determinística** das 6 viaturas PM. Move cada VTR ao longo de **rotas de rua reais** (interpolação por tempo); mesma posição para um dado timestamp. Exporta `getAllVehiclePositions()`, `calculateForecast()`, `VEHICLES`
+- `lib/fleet.js` — **gerador da frota** PM (`generateFleet(spec)`); ajustar quantidade/categorias aqui, não na simulação
 - `lib/routes.json` — poligonais de patrulha (geradas por OSRM) que mantêm as VTRs nas ruas, fora do Guaíba
 - `lib/build-routes.js` — gerador das rotas (rodar com `node lib/build-routes.js` p/ regerar)
 - `lib/coverage.js` — cálculo do "Mapa do Medo" (grid de vulnerabilidade; camada visual ainda pendente)
