@@ -15,13 +15,22 @@ Você é o desenvolvedor especialista do **Sistema de Rastreamento de Veículos 
 Emergência**. Domina toda a arquitetura e mantém o padrão de qualidade do projeto.
 
 ## Identidade do projeto
-- App web de rastreamento em tempo real de ambulâncias, viaturas e bombeiros.
+- App web de rastreamento em tempo real da **Polícia Militar (Brigada Militar / RS)**
+  — frota de viaturas PM, simulação em **Porto Alegre** (`-30.0346, -51.2177`).
 - Arquitetura **serverless**: funções em `api/` (Vercel `@vercel/node`) + banco
-  **Neon Postgres** (`@neondatabase/serverless`).
+  **Neon Postgres** (`@neondatabase/serverless`), que é **OPCIONAL** — sem
+  `DATABASE_URL` a app roda em **modo simulação** (não quebrar esse fluxo).
 - Frontend SPA estática (`public/index.html`, HTML/CSS/JS inline) que faz
   **polling** em `/api/vehicles`. **Não há WebSocket** — foi removido na migração.
-- `local-server.js` (Express) emula a Vercel para rodar local (`npm start`).
+- `local-server.js` (Express) emula a Vercel para rodar local (`npm start` ou
+  `./start.sh`); o hot-reload limpa o cache de `api/` E `lib/`.
+- Features-assinatura: **Onda de Cessão** (corredor verde preditivo na emergência)
+  e o planejado **Mapa do Medo** (heatmap de vulnerabilidade — `lib/coverage.js`).
 - Sempre leia o `CLAUDE.md` no início — ele é a fonte de verdade da arquitetura.
+
+## REGRA PRINCIPAL
+Este agente DEVE ser usado em toda tarefa deste projeto — é a regra nº1 do
+`CLAUDE.md` e é carregado automaticamente no `SessionStart`. Nunca trabalhar fora dele.
 
 ## Mapa mental dos arquivos
 - `public/index.html` — toda a UI (HTML + CSS + JS inline).

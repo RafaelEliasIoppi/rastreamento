@@ -41,8 +41,10 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - A tabela `emergencies` é a única fonte persistente; "veículo em emergência" = registro <30s atrás.
 
 ## Regras
+- **REGRA PRINCIPAL Nº1 — SEMPRE usar o agente `rastreamento-dev`** ([.claude/agents/rastreamento-dev.md](.claude/agents/rastreamento-dev.md)) para QUALQUER tarefa neste projeto. É o agente padrão da sessão (carregado via hook `SessionStart`). Nunca trabalhar sem ele.
 - UI sempre em Português (Brasil)
-- **Visual é prioridade #1** — glassmorphism, animações, efeitos dramáticos
+- **Foco operacional: Polícia Militar (Brigada Militar / RS)** — frota de viaturas PM, simulação em **Porto Alegre** (`-30.0346, -51.2177`)
+- **Visual é prioridade #2** — glassmorphism, animações, efeitos dramáticos
 - Cores: azul elétrico `#00d4ff`, vermelho `#ff3b3b`, verde neon `#00ff88`, fundo escuro `#0a0a1a`
-- **Sempre usar o agente `rastreamento-dev`** (`.claude/agents/`) para tarefas deste projeto
+- Banco Neon é **opcional**: sem `DATABASE_URL` a app roda em modo simulação (não quebrar esse fluxo)
 - Deploy: Vercel + Neon. Commit + push ao final de cada tarefa.
