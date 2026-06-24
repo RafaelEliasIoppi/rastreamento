@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { sql } = require('../lib/db');
+    const { sql, isConfigured } = require('../lib/db');
 
     if (req.method === 'POST') {
       const { vehicleId, message } = req.body || {};
@@ -23,6 +23,21 @@ module.exports = async function handler(req, res) {
       const vehicle = vehicles.find(v => v.id === vehicleId);
       if (!vehicle) {
         return res.status(404).json({ error: 'Vehicle not found' });
+      }
+
+      // Modo simulacao (sem banco): devolve a emergencia sem persistir.
+      if (!isConfigured) {
+        return res.status(201).json({
+          id: null,
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name,
+          vehicleType: vehicle.type,
+          lat: vehicle.lat,
+          lng: vehicle.lng,
+          message: message || 'Solicitacao de apoio!',
+          timestamp: Date.now(),
+          persisted: false,
+        });
       }
 
       const result = await sql`
@@ -45,6 +60,11 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      // Modo simulacao (sem banco): nao ha historico persistido.
+      if (!isConfigured) {
+        return res.status(200).json([]);
+      }
+
       const rows = await sql`
         SELECT * FROM emergencies
         ORDER BY created_at DESC

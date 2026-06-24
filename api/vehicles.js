@@ -18,7 +18,8 @@ module.exports = async function handler(req, res) {
 
     // Check DB for active emergencies (within last 30 seconds)
     try {
-      const { sql } = require('../lib/db');
+      const { sql, isConfigured } = require('../lib/db');
+      if (!isConfigured) return res.status(200).json(vehicles);
       const emergencies = await sql`
         SELECT vehicle_id FROM emergencies
         WHERE created_at > NOW() - INTERVAL '30 seconds'

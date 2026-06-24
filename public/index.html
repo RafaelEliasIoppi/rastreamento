@@ -257,6 +257,10 @@ body::before {
   inset: 0;
   z-index: 1;
 }
+/* Clareia o basemap (dark_all e quase preto) e realca cores/contraste das ruas */
+#map .leaflet-tile-pane {
+  filter: brightness(1.6) contrast(1.15) saturate(1.3);
+}
 .leaflet-control-zoom { display: none !important; }
 .leaflet-routing-container { display: none !important; }
 .leaflet-control-attribution {
@@ -1327,6 +1331,24 @@ body::before {
 }
 
 /* ============================================
+   ONDA DE CESSAO (corredor verde preditivo)
+   ============================================ */
+.yield-wave-flow {
+  stroke-dasharray: 8 14;
+  animation: yieldFlow 0.7s linear infinite;
+  filter: drop-shadow(0 0 6px #00ff88);
+}
+@keyframes yieldFlow { to { stroke-dashoffset: -22; } }
+.yield-wave-node {
+  filter: drop-shadow(0 0 6px #00ff88);
+  animation: yieldNodePulse 1s ease-in-out infinite;
+}
+@keyframes yieldNodePulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* ============================================
    RED VIGNETTE (applied to body during emergency)
    ============================================ */
 #screen-vignette {
@@ -2031,16 +2053,92 @@ function updateVehicleSelect(vehicleList) {
 }
 
 // ============================================
+// ONDA DE CESSAO (corredor verde preditivo)
+// Projeta a trajetoria futura do veiculo e desenha um corredor de energia
+// correndo a frente dele — a cidade "cedendo passagem".
+// ============================================
+let yieldWaveLayer = null;
+
+function projectForecast(v, horizonSec = 30, stepSec = 2) {
+  const points = [];
+  const speedKmh = Math.max(20, v.speed || 40);
+  const headingRad = (v.heading || 0) * Math.PI / 180;
+  const cosLat = Math.cos(v.lat * Math.PI / 180) || 1;
+  for (let t = 0; t <= horizonSec; t += stepSec) {
+    const distKm = speedKmh * (t / 3600);
+    const dLat = (distKm / 111.32) * Math.cos(headingRad);
+    const dLng = (distKm / (111.32 * cosLat)) * Math.sin(headingRad);
+    points.push([v.lat + dLat, v.lng + dLng]);
+  }
+  return points;
+}
+
+function renderYieldWave(vehicle) {
+  clearYieldWave();
+  const pts = projectForecast(vehicle);
+  yieldWaveLayer = L.layerGroup().addTo(map);
+
+  // Corredor: halo largo + linha de energia animada
+  L.polyline(pts, { color: '#00d4ff', weight: 12, opacity: 0.16, lineCap: 'round' }).addTo(yieldWaveLayer);
+  L.polyline(pts, { color: '#00ff88', weight: 4, opacity: 0.9, lineCap: 'round', className: 'yield-wave-flow' }).addTo(yieldWaveLayer);
+
+  // Nos de cruzamento acendendo em sequencia ao longo do corredor
+  pts.forEach((p, i) => {
+    if (i % 3 !== 0) return;
+    const node = L.circleMarker(p, {
+      radius: 5, color: '#00ff88', fillColor: '#00ff88',
+      fillOpacity: 0.85, weight: 1, className: 'yield-wave-node'
+    }).addTo(yieldWaveLayer);
+    if (node._path) node._path.style.animationDelay = (i * 0.08) + 's';
+  });
+
+  // Encerra a onda apos 12s
+  setTimeout(clearYieldWave, 12000);
+}
+
+function clearYieldWave() {
+  if (yieldWaveLayer) {
+    map.removeLayer(yieldWaveLayer);
+    yieldWaveLayer = null;
+  }
+}
+
+// ============================================
 // EMERGENCY BUTTON
 // ============================================
-function triggerEmergency() {
+async function triggerEmergency() {
   const select = document.getElementById('vehicle-select');
   const vehicleId = select.value;
   if (!vehicleId) return;
-  socket.emit('emergency', {
-    vehicleId,
-    message: 'Solicitacao de apoio!'
-  });
+
+  const vehicle = vehicles.find(v => v.id === vehicleId);
+  if (!vehicle) return;
+
+  // Disparo otimista: a simulacao funciona mesmo sem banco (Neon) configurado.
+  const entry = {
+    vehicleId: vehicle.id,
+    vehicleName: vehicle.name,
+    vehicleType: vehicle.type,
+    lat: vehicle.lat,
+    lng: vehicle.lng,
+    message: 'Solicitacao de apoio!',
+    timestamp: Date.now()
+  };
+  showEmergencyAlert(entry);
+  playAlertSound();
+  renderYieldWave(vehicle);            // Onda de Cessao a partir do veiculo
+  lastEmergencyIds.add(vehicle.id);
+
+  // Persiste no backend (best-effort — grava quando o Neon esta configurado).
+  try {
+    await fetch('/api/emergency', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vehicleId, message: 'Solicitacao de apoio!' })
+    });
+  } catch (e) {
+    // Simulacao continua mesmo se a persistencia falhar.
+  }
 }
 
 // ============================================

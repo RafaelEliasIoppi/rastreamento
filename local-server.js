@@ -16,8 +16,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 function wrapHandler(handlerPath) {
   return async (req, res) => {
     try {
-      // Clear require cache so changes are picked up on refresh
-      delete require.cache[require.resolve(handlerPath)];
+      // Hot-reload: limpa o cache de TODO modulo local do projeto (api/ e lib/),
+      // nunca de node_modules. Sem isso, mudancas em lib/ (db, simulation) ficavam
+      // presas em cache e o servidor servia codigo antigo.
+      for (const key of Object.keys(require.cache)) {
+        if (key.startsWith(__dirname) && !key.includes('node_modules')) {
+          delete require.cache[key];
+        }
+      }
       const handler = require(handlerPath);
       await handler(req, res);
     } catch (err) {

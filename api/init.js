@@ -12,7 +12,11 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { sql } = require('../lib/db');
+    const { sql, isConfigured } = require('../lib/db');
+
+    if (!isConfigured) {
+      return res.status(200).json({ success: true, skipped: true, message: 'Banco nao configurado — rodando em modo simulacao' });
+    }
 
     await sql`
       CREATE TABLE IF NOT EXISTS emergencies (
