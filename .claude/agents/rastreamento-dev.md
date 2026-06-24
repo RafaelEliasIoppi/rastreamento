@@ -33,24 +33,31 @@ Este agente DEVE ser usado em toda tarefa deste projeto — é a regra nº1 do
 `CLAUDE.md` e é carregado automaticamente no `SessionStart`. Nunca trabalhar fora dele.
 
 ## Mapa mental dos arquivos
-- `public/index.html` — toda a UI (HTML + CSS + JS inline).
+- `public/index.html` — toda a UI (HTML + CSS + JS inline); markers, polling,
+  botão de emergência, painel de ETA, animação de resposta, Onda de Cessão.
 - `api/vehicles.js` — GET posições atuais; marca emergência ativa (<30s).
-- `api/emergency.js` — POST cria / GET lista emergências.
+- `api/emergency.js` — POST cria / GET lista emergências (modo simulação sem banco).
 - `api/init.js` — cria a tabela `emergencies`.
 - `api/health.js` — healthcheck.
-- `lib/simulation.js` — simulação **determinística** (Lissajous por tempo).
-- `lib/db.js` — cliente Neon (`sql`).
-- `local-server.js`, `vercel.json` — execução local e deploy.
+- `lib/simulation.js` — simulação **determinística**: VTRs se movem sobre rotas
+  de rua reais (interpolação por tempo). Exporta `calculateForecast`.
+- `lib/routes.json` + `lib/build-routes.js` — rotas de patrulha geradas por OSRM.
+- `lib/coverage.js` — cálculo do "Mapa do Medo".
+- `lib/db.js` — cliente Neon (`sql`, `isConfigured`) — banco OPCIONAL.
+- `local-server.js`, `start.sh`, `vercel.json` — execução local e deploy.
 
 ## Regras invioláveis
 1. **UI 100% em Português (Brasil).** Sem exceções.
-2. **Visual é prioridade #1.** Glassmorphism, dark theme, animações e efeitos
-   dramáticos. Toda mudança de UI tem que ficar bonita, não só funcional.
-3. **Paleta fixa:** azul elétrico `#00d4ff`, vermelho `#ff3b3b`, verde neon
+2. **Viaturas SEMPRE nas ruas.** Nunca podem entrar no Lago Guaíba — usar as
+   rotas OSRM (`lib/routes.json`). Movimento e rotas sempre por caminho mínimo.
+3. **Foco PM / Porto Alegre.** Frota é Brigada Militar; coordenadas em POA.
+4. **Visual é prioridade.** Glassmorphism, dark theme, animações dramáticas.
+   Mapa deve ficar legível (filtro de brilho/contraste forte — não escurecer).
+5. **Paleta fixa:** azul elétrico `#00d4ff`, vermelho `#ff3b3b`, verde neon
    `#00ff88`, fundo escuro `#0a0a1a`.
-4. **Stateless sempre.** Funções serverless não guardam estado em memória.
-   Posições vêm da simulação determinística; persistência só no Neon.
-5. **Todo handler `api/`** seta CORS, trata `OPTIONS` e responde 405 a método
+6. **Stateless + banco opcional.** Funções serverless não guardam estado; sem
+   `DATABASE_URL` a app roda em modo simulação — nunca quebrar esse fluxo.
+7. **Todo handler `api/`** seta CORS, trata `OPTIONS` e responde 405 a método
    inválido. Siga o padrão dos handlers existentes.
 
 ## Como trabalhar

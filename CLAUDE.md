@@ -29,11 +29,21 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - `api/vehicles.js` — `GET` posições atuais dos 6 veículos; marca `status:'emergency'` se houver emergência ativa (<30s) no banco
 - `api/emergency.js` — `POST` cria emergência (grava posição atual do veículo); `GET` lista últimas 20
 - `api/init.js` — `POST` cria a tabela `emergencies` (rodar uma vez após configurar o banco)
-- `lib/db.js` — cliente Neon (`sql`)
-- `lib/simulation.js` — simulação **determinística** de 6 veículos em São Paulo (curvas de Lissajous baseadas no tempo; mesma posição para um dado timestamp em qualquer invocação serverless). Exporta `getAllVehiclePositions()` e `VEHICLES`
-- `local-server.js` — servidor Express local que emula a Vercel
+- `lib/db.js` — cliente Neon (`sql`) + flag `isConfigured` (banco opcional)
+- `lib/simulation.js` — simulação **determinística** das 6 viaturas PM. Move cada VTR ao longo de **rotas de rua reais** (interpolação por tempo); mesma posição para um dado timestamp. Exporta `getAllVehiclePositions()`, `calculateForecast()`, `VEHICLES`
+- `lib/routes.json` — poligonais de patrulha (geradas por OSRM) que mantêm as VTRs nas ruas, fora do Guaíba
+- `lib/build-routes.js` — gerador das rotas (rodar com `node lib/build-routes.js` p/ regerar)
+- `lib/coverage.js` — cálculo do "Mapa do Medo" (grid de vulnerabilidade; camada visual ainda pendente)
+- `local-server.js` — servidor Express local que emula a Vercel (hot-reload limpa cache de `api/` e `lib/`)
+- `start.sh` — sobe local liberando a porta 3000 antes
 - `vercel.json` — builds (`api/**` serverless, `public/**` estático) e rotas
 - `package.json` — deps: `express` (local), `@neondatabase/serverless`
+
+## Features-assinatura (frontend)
+- **Viaturas nas ruas**: NUNCA podem entrar no Lago Guaíba — movem-se sobre `lib/routes.json` (OSRM = caminho mínimo).
+- **Resposta à emergência**: botão otimista (funciona sem banco) → as outras VTRs calculam a menor rota OSRM, **percorrem e CHEGAM** ao local; rota é polilinha própria persistente (não some no zoom).
+- **Painel de ETA**: ranqueia VTRs por tempo/distância, destaca "MAIS PROXIMA" / "CHEGOU".
+- **Onda de Cessão**: corredor verde preditivo à frente da VTR em emergência.
 
 ## Convenções importantes
 - **Estado é stateless**: cada função serverless é isolada. Nunca guarde estado em memória entre requisições — posições vêm da simulação determinística, o resto vai pro Neon.
