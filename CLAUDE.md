@@ -36,7 +36,7 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - `lib/sectors.js` — **gerador dos setores** de patrulhamento (`generateSectors()`, `sectorForPoint()`); cada setor = área da rota de uma viatura (casco convexo)
 - `lib/routes.json` — poligonais de patrulha (geradas por OSRM) que mantêm as VTRs nas ruas, fora do Guaíba
 - `lib/build-routes.js` — gerador das rotas (rodar com `node lib/build-routes.js` p/ regerar)
-- `lib/coverage.js` — cálculo do "Mapa do Medo" (grid de vulnerabilidade; camada visual ainda pendente)
+- `lib/coverage.js` — cálculo do "Mapa do Medo" (grid de vulnerabilidade); a camada visual no frontend usa a mesma fórmula
 - `local-server.js` — servidor Express local que emula a Vercel (hot-reload limpa cache de `api/` e `lib/`)
 - `start.sh` — sobe local liberando a porta 3000 antes
 - `vercel.json` — builds (`api/**` serverless, `public/**` estático) e rotas
@@ -47,7 +47,8 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - **Resposta à emergência**: botão otimista (funciona sem banco) → as outras VTRs calculam a menor rota OSRM, **percorrem e CHEGAM** ao local; rota é polilinha própria persistente (não some no zoom).
 - **Painel de ETA**: ranqueia VTRs por tempo/distância, destaca "MAIS PROXIMA" / "CHEGOU".
 - **Onda de Cessão**: corredor verde preditivo à frente da VTR em emergência.
-- **Controle manual (painel "Geração")**: botões para mostrar/ocultar **VTRs** e desenhar/limpar **Setores** (busca `/api/sectors`) no mapa.
+- **Mapa do Medo**: heatmap de vulnerabilidade (tempo até a VTR livre mais próxima); abre um "buraco" vermelho quando uma viatura entra em emergência.
+- **Controle manual (painel "Geração")**: botões para mostrar/ocultar **VTRs**, desenhar/limpar **Setores** (`/api/sectors`) e ligar/desligar o **Mapa do Medo**.
 
 ## Convenções importantes
 - **Estado é stateless**: cada função serverless é isolada. Nunca guarde estado em memória entre requisições — posições vêm da simulação determinística, o resto vai pro Neon.

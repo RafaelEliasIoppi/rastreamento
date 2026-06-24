@@ -1665,6 +1665,7 @@ body::before {
   <div class="gen-title">Geracao</div>
   <button id="btn-gen-vtrs" class="gen-btn active" onclick="toggleVTRs()">&#128660; VTRs</button>
   <button id="btn-gen-setores" class="gen-btn" onclick="toggleSetores()">&#9638; Setores</button>
+  <button id="btn-gen-medo" class="gen-btn" onclick="toggleMedo()">&#128293; Mapa do Medo</button>
 </div>
 
 <!-- ============ EMERGENCY BUTTON ============ -->
@@ -1900,6 +1901,7 @@ setInterval(async () => {
     updateVehicleSelect(data);
     document.getElementById('stat-vehicles').textContent = data.length;
     updateDashboard(data);
+    if (medoActive) drawMedo();
     playPositionBeep();
     updateConnectionStatus(true);
 
@@ -2107,6 +2109,69 @@ async function toggleSetores() {
     // silencioso
   }
 }
+
+// ============================================
+// MAPA DO MEDO — heatmap de vulnerabilidade
+// Para cada celula da viewport: tempo ate a viatura LIVRE mais proxima.
+// Viaturas em emergencia nao cobrem ninguem -> abre um "buraco" vermelho.
+// ============================================
+let medoLayer = null;
+let medoActive = false;
+
+function medoDistanceKm(aLat, aLng, bLat, bLng) {
+  const m = ((aLat + bLat) / 2) * Math.PI / 180;
+  const dLat = (bLat - aLat) * 111.32;
+  const dLng = (bLng - aLng) * 111.32 * Math.cos(m);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+function medoRisk(lat, lng) {
+  let best = Infinity;
+  vehicles.forEach(v => {
+    if (v.status === 'emergency') return; // ocupada: nao cobre
+    const min = (medoDistanceKm(lat, lng, v.lat, v.lng) / 40) * 60; // ~40 km/h
+    if (min < best) best = min;
+  });
+  const clamped = Math.max(2, Math.min(6, best)); // 2min(otimo)..6min(critico)
+  return (clamped - 2) / 4; // 0=verde .. 1=vermelho
+}
+
+function medoColor(r) {
+  let c1, c2, t;
+  if (r < 0.5) { c1 = [0, 255, 136]; c2 = [255, 208, 0]; t = r / 0.5; }
+  else { c1 = [255, 208, 0]; c2 = [255, 59, 59]; t = (r - 0.5) / 0.5; }
+  const ch = i => Math.round(c1[i] + (c2[i] - c1[i]) * t);
+  return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+}
+
+function drawMedo() {
+  if (!medoActive) return;
+  if (medoLayer) map.removeLayer(medoLayer);
+  medoLayer = L.layerGroup().addTo(map);
+  const b = map.getBounds();
+  const COLS = 16, ROWS = 16;
+  const latStep = (b.getNorth() - b.getSouth()) / ROWS;
+  const lngStep = (b.getEast() - b.getWest()) / COLS;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const south = b.getSouth() + latStep * r;
+      const west = b.getWest() + lngStep * c;
+      const risk = medoRisk(south + latStep / 2, west + lngStep / 2);
+      L.rectangle([[south, west], [south + latStep, west + lngStep]], {
+        stroke: false, fillColor: medoColor(risk), fillOpacity: 0.06 + risk * 0.34
+      }).addTo(medoLayer);
+    }
+  }
+}
+
+function toggleMedo() {
+  medoActive = !medoActive;
+  document.getElementById('btn-gen-medo').classList.toggle('active', medoActive);
+  if (medoActive) drawMedo();
+  else if (medoLayer) { map.removeLayer(medoLayer); medoLayer = null; }
+}
+
+map.on('moveend', () => { if (medoActive) drawMedo(); });
 
 function updateMarkers(vehicleList) {
   if (!vtrsVisible) return; // VTRs ocultas pelo controle manual
