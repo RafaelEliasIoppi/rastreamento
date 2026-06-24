@@ -1,0 +1,2319 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rastreamento de Emergencia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+<style>
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after {
+  margin: 0; padding: 0; box-sizing: border-box;
+}
+:root {
+  --primary: #00d4ff;
+  --primary-glow: rgba(0,212,255,0.4);
+  --primary-deep: #0088cc;
+  --emergency: #ff3b3b;
+  --emergency-glow: rgba(255,59,59,0.5);
+  --success: #00ff88;
+  --success-dim: rgba(0,255,136,0.3);
+  --bg-deep: #0a0a1a;
+  --bg-mid: #1a1a2e;
+  --bg-panel: rgba(15,15,35,0.65);
+  --border-glass: rgba(255,255,255,0.08);
+  --border-glass-light: rgba(255,255,255,0.15);
+  --text: #e0e0f0;
+  --text-dim: #8888aa;
+  --amber: #ffaa00;
+  --ambulancia-color: #00d4ff;
+  --policia-color: #7b68ee;
+  --bombeiros-color: #ff6b35;
+  --font-title: 'Orbitron', monospace, sans-serif;
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --anim-speed: 1;
+}
+html, body {
+  height: 100%; width: 100%;
+  font-family: var(--font);
+  background: var(--bg-deep);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ============================================
+   LOADING SCREEN
+   ============================================ */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #050510;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  transition: opacity 0.8s ease, visibility 0.8s ease;
+}
+#loading-screen.fade-out {
+  opacity: 0;
+  visibility: hidden;
+}
+.loading-logo {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, rgba(0,212,255,0.3), rgba(123,104,238,0.15), transparent 70%);
+  border: 2px solid rgba(0,212,255,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 50px;
+  animation: loadingLogoPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 60px rgba(0,212,255,0.3), 0 0 120px rgba(123,104,238,0.15);
+}
+@keyframes loadingLogoPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 60px rgba(0,212,255,0.3); }
+  50% { transform: scale(1.08); box-shadow: 0 0 100px rgba(0,212,255,0.5), 0 0 160px rgba(123,104,238,0.2); }
+}
+.loading-title {
+  font-family: var(--font-title);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  background: linear-gradient(90deg, var(--primary), #7b68ee, var(--primary));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 2s linear infinite;
+  text-shadow: 0 0 40px rgba(0,212,255,0.3);
+}
+.loading-bar-container {
+  width: 280px;
+  height: 4px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.loading-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--primary), #7b68ee);
+  border-radius: 2px;
+  box-shadow: 0 0 12px var(--primary-glow);
+  transition: width 0.3s ease;
+}
+.loading-status {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+/* ============================================
+   PARTICLE CANVAS
+   ============================================ */
+#particle-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ============================================
+   ANIMATED BACKGROUND
+   ============================================ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(0,212,255,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(123,104,238,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(255,59,59,0.04) 0%, transparent 50%),
+    linear-gradient(135deg, #0a0a1a 0%, #12122a 50%, #0a0a1a 100%);
+  animation: bgShift 20s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes bgShift {
+  0%   { opacity: 1; filter: hue-rotate(0deg); }
+  50%  { opacity: 0.9; filter: hue-rotate(10deg); }
+  100% { opacity: 1; filter: hue-rotate(-10deg); }
+}
+
+/* ============================================
+   CUSTOM KEYFRAMES
+   ============================================ */
+@keyframes shimmer {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes neon-breathe {
+  0%, 100% { opacity: 0.7; filter: brightness(1); }
+  50% { opacity: 1; filter: brightness(1.3); }
+}
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes holographic-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes glitch-flicker {
+  0%, 7%, 10%, 90%, 93%, 100% { opacity: 1; transform: translate(0); }
+  8% { opacity: 0.8; transform: translate(-2px, 1px); }
+  9% { opacity: 0.9; transform: translate(2px, -1px); }
+  91% { opacity: 0.7; transform: translate(1px, 2px); }
+  92% { opacity: 0.85; transform: translate(-1px, -2px); }
+}
+@keyframes scanning-line {
+  0% { top: -2px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+@keyframes particle-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+@keyframes gradient-line-move {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes signal-bar-1 {
+  0%, 100% { height: 4px; }
+  50% { height: 8px; }
+}
+@keyframes signal-bar-2 {
+  0%, 100% { height: 7px; }
+  50% { height: 12px; }
+}
+@keyframes signal-bar-3 {
+  0%, 100% { height: 10px; }
+  50% { height: 16px; }
+}
+@keyframes signal-bar-4 {
+  0%, 100% { height: 13px; }
+  50% { height: 18px; }
+}
+@keyframes emergency-ring-1 {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+@keyframes emergency-ring-2 {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(3); opacity: 0; }
+}
+@keyframes emergency-ring-3 {
+  0% { transform: scale(1); opacity: 0.4; }
+  100% { transform: scale(3.5); opacity: 0; }
+}
+@keyframes sweep-scan {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes sos-shake {
+  0%, 100% { transform: scale(1.12) rotate(0deg); }
+  10% { transform: scale(1.12) rotate(-3deg); }
+  20% { transform: scale(1.12) rotate(3deg); }
+  30% { transform: scale(1.12) rotate(-3deg); }
+  40% { transform: scale(1.12) rotate(3deg); }
+  50% { transform: scale(1.12) rotate(0deg); }
+}
+@keyframes route-dash {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -30; }
+}
+@keyframes vignette-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+@keyframes radar-circle-pulse {
+  0% { r: 10; opacity: 0.8; stroke-width: 3; }
+  100% { r: 80; opacity: 0; stroke-width: 0.5; }
+}
+@keyframes speedometer-needle {
+  0%, 100% { transform: rotate(-90deg); }
+  50% { transform: rotate(30deg); }
+}
+@keyframes marker-heading-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   MAP
+   ============================================ */
+#map {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.leaflet-control-zoom { display: none !important; }
+.leaflet-routing-container { display: none !important; }
+.leaflet-control-attribution {
+  background: rgba(0,0,0,0.5) !important;
+  color: #666 !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: #888 !important; }
+
+/* ============================================
+   GLASSMORPHISM UTILITIES
+   ============================================ */
+.glass {
+  background: var(--bg-panel);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--border-glass);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.glass-light {
+  background: rgba(20,20,45,0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass-light);
+}
+
+/* ============================================
+   TOP HEADER BAR
+   ============================================ */
+#header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-glass);
+  background: rgba(10,10,26,0.82);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  overflow: hidden;
+}
+/* Moving gradient line under header */
+#header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  overflow: hidden;
+}
+.header-gradient-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  overflow: hidden;
+  z-index: 1;
+}
+.header-gradient-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--primary), #7b68ee, var(--primary), transparent);
+  animation: gradient-line-move 3s linear infinite;
+}
+
+#header .logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.5px;
+}
+#header .logo .icon-ring {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #7b68ee);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 20px var(--primary-glow), 0 0 40px rgba(123,104,238,0.2);
+  animation: logoPulse 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px var(--primary-glow));
+}
+@keyframes logoPulse {
+  0%, 100% { box-shadow: 0 0 20px var(--primary-glow); }
+  50% { box-shadow: 0 0 35px var(--primary-glow), 0 0 60px rgba(0,212,255,0.15); }
+}
+#header .logo .title-gradient {
+  font-family: var(--font-title);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, var(--primary), #7b68ee, #ff6bf0, var(--primary));
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
+  text-shadow: 0 0 30px rgba(0,212,255,0.5);
+  filter: drop-shadow(0 0 6px rgba(0,212,255,0.3));
+}
+#header .stats {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+/* Digital clock */
+.digital-clock {
+  font-family: var(--font-title);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  text-shadow: 0 0 12px var(--primary-glow);
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,212,255,0.15);
+  background: rgba(0,212,255,0.05);
+}
+/* Signal bars */
+.signal-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+  padding: 0 8px;
+}
+.signal-bars .bar {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--primary);
+  box-shadow: 0 0 4px var(--primary-glow);
+}
+.signal-bars .bar:nth-child(1) { height: 5px; animation: signal-bar-1 2s ease-in-out infinite; }
+.signal-bars .bar:nth-child(2) { height: 8px; animation: signal-bar-2 2s ease-in-out infinite 0.15s; }
+.signal-bars .bar:nth-child(3) { height: 11px; animation: signal-bar-3 2s ease-in-out infinite 0.3s; }
+.signal-bars .bar:nth-child(4) { height: 14px; animation: signal-bar-4 2s ease-in-out infinite 0.45s; }
+
+#header .stat {
+  display: flex; align-items: center; gap: 6px;
+}
+#header .stat .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+#header .stat .dot.green { background: var(--success); box-shadow: 0 0 8px var(--success-dim); }
+#header .stat .dot.blue { background: var(--primary); box-shadow: 0 0 8px var(--primary-glow); }
+#header .stat .dot.amber { background: var(--amber); box-shadow: 0 0 8px rgba(255,170,0,0.4); }
+@keyframes dotPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+.connection-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+}
+.connection-badge.online {
+  color: var(--success);
+  border-color: rgba(0,255,136,0.3);
+  background: rgba(0,255,136,0.08);
+  box-shadow: 0 0 12px rgba(0,255,136,0.1);
+}
+.connection-badge.offline {
+  color: var(--emergency);
+  border-color: rgba(255,59,59,0.3);
+  background: rgba(255,59,59,0.08);
+}
+.connection-badge .badge-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+#sidebar {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-glass);
+  background: rgba(8,8,22,0.85);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  overflow: hidden;
+  box-shadow: 4px 0 30px rgba(0,0,0,0.3);
+}
+#sidebar.collapsed {
+  transform: translateX(-320px);
+}
+
+/* Sidebar toggle */
+#sidebar-toggle {
+  position: fixed;
+  top: 72px;
+  left: 320px;
+  z-index: 1000;
+  width: 28px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-glass);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: rgba(10,10,26,0.85);
+  backdrop-filter: blur(16px);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+#sidebar.collapsed ~ #sidebar-toggle {
+  left: 0;
+}
+#sidebar-toggle:hover {
+  color: var(--primary);
+  background: rgba(0,212,255,0.08);
+  box-shadow: 0 0 15px rgba(0,212,255,0.15);
+}
+
+/* Sidebar sections */
+.sidebar-section {
+  padding: 16px;
+}
+.sidebar-section-title {
+  font-family: var(--font-title);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-shadow: 0 0 12px var(--primary-glow);
+}
+.sidebar-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--primary-glow), transparent);
+}
+
+/* Vehicle list */
+#vehicle-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+#vehicle-list::-webkit-scrollbar { width: 4px; }
+#vehicle-list::-webkit-scrollbar-track { background: transparent; }
+#vehicle-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.vehicle-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
+  background: rgba(255,255,255,0.02);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+  position: relative;
+  overflow: hidden;
+  perspective: 800px;
+  transform-style: preserve-3d;
+}
+/* Holographic shimmer overlay */
+.vehicle-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(0,212,255,0.05) 45%, rgba(123,104,238,0.08) 50%, rgba(0,212,255,0.05) 55%, transparent 60%);
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.vehicle-card:hover {
+  border-color: rgba(0,212,255,0.25);
+  background: rgba(255,255,255,0.04);
+  transform: perspective(800px) rotateY(-2deg) rotateX(1deg) translateX(4px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 15px rgba(0,212,255,0.1);
+}
+.vehicle-card:hover::before {
+  opacity: 1;
+  animation: holographic-shimmer 1.5s linear infinite;
+}
+.vehicle-card.emergency {
+  border-color: rgba(255,59,59,0.4);
+  background: rgba(255,59,59,0.06);
+  animation: cardEmergencyPulse 1.5s ease-in-out infinite;
+}
+.vehicle-card.emergency::before {
+  background: linear-gradient(105deg, transparent 40%, rgba(255,59,59,0.06) 45%, rgba(255,100,100,0.1) 50%, rgba(255,59,59,0.06) 55%, transparent 60%);
+  background-size: 200% 100%;
+  opacity: 1;
+  animation: holographic-shimmer 1.2s linear infinite;
+}
+.vehicle-card.emergency:hover {
+  transform: perspective(800px) rotateY(-2deg) rotateX(1deg) translateX(4px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 20px rgba(255,59,59,0.2);
+}
+@keyframes cardEmergencyPulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(255,59,59,0); }
+  50% { box-shadow: 0 0 20px rgba(255,59,59,0.15); }
+}
+.vehicle-icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  position: relative;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.vehicle-icon.ambulancia {
+  background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,212,255,0.05));
+  color: var(--ambulancia-color);
+  border: 1px solid rgba(0,212,255,0.25);
+  box-shadow: 0 0 12px rgba(0,212,255,0.15);
+}
+.vehicle-icon.policia {
+  background: linear-gradient(135deg, rgba(123,104,238,0.2), rgba(123,104,238,0.05));
+  color: var(--policia-color);
+  border: 1px solid rgba(123,104,238,0.25);
+  box-shadow: 0 0 12px rgba(123,104,238,0.15);
+}
+.vehicle-icon.bombeiros {
+  background: linear-gradient(135deg, rgba(255,107,53,0.2), rgba(255,107,53,0.05));
+  color: var(--bombeiros-color);
+  border: 1px solid rgba(255,107,53,0.25);
+  box-shadow: 0 0 12px rgba(255,107,53,0.15);
+}
+.vehicle-info {
+  flex: 1;
+  min-width: 0;
+}
+.vehicle-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vehicle-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vehicle-speed {
+  font-variant-numeric: tabular-nums;
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.status-badge.normal {
+  color: var(--success);
+  background: rgba(0,255,136,0.1);
+  border: 1px solid rgba(0,255,136,0.2);
+  text-shadow: 0 0 6px var(--success-dim);
+}
+.status-badge.emergency {
+  color: var(--emergency);
+  background: rgba(255,59,59,0.15);
+  border: 1px solid rgba(255,59,59,0.3);
+  animation: statusBlink 1s ease-in-out infinite;
+  text-shadow: 0 0 8px var(--emergency-glow);
+}
+@keyframes statusBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Emergency log */
+#emergency-log-section {
+  border-top: 1px solid var(--border-glass);
+  max-height: 220px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#emergency-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.log-entry {
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border-left: 3px solid var(--emergency);
+  background: rgba(255,59,59,0.05);
+  font-size: 12px;
+  animation: logSlideIn 0.4s cubic-bezier(0.16,1,0.3,1);
+  box-shadow: 0 0 8px rgba(255,59,59,0.05);
+}
+@keyframes logSlideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.log-entry .log-time {
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.log-entry .log-message {
+  color: var(--emergency);
+  font-weight: 500;
+  text-shadow: 0 0 6px rgba(255,59,59,0.2);
+}
+.log-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 16px;
+  font-style: italic;
+}
+
+/* ============================================
+   VEHICLE SELECT DROPDOWN
+   ============================================ */
+#vehicle-select-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#vehicle-select {
+  appearance: none;
+  padding: 10px 36px 10px 16px;
+  border-radius: 12px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  border: 1px solid var(--border-glass-light);
+  background: rgba(15,15,35,0.8);
+  backdrop-filter: blur(20px);
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+#vehicle-select:hover, #vehicle-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 20px rgba(0,212,255,0.15), 0 4px 20px rgba(0,0,0,0.3);
+}
+#vehicle-select option {
+  background: #1a1a2e;
+  color: var(--text);
+}
+
+/* ============================================
+   EMERGENCY BUTTON - MEGA UPGRADE
+   ============================================ */
+#emergency-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1001;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--font-title);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: white;
+  background: radial-gradient(circle at 30% 30%, #ff5555, #cc0000, #880000);
+  box-shadow:
+    0 0 40px rgba(255,59,59,0.5),
+    0 0 80px rgba(255,59,59,0.25),
+    0 4px 15px rgba(0,0,0,0.5),
+    inset 0 -3px 8px rgba(0,0,0,0.3),
+    inset 0 2px 4px rgba(255,200,200,0.2);
+  transition: all 0.2s ease;
+  animation: emergencyBtnPulse 2s ease-in-out infinite;
+  position: relative;
+  overflow: visible;
+}
+#emergency-btn .btn-icon {
+  font-size: 32px;
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.6));
+  text-shadow: 0 0 20px rgba(255,255,255,0.5);
+}
+#emergency-btn .btn-text {
+  font-size: 14px;
+  text-shadow: 0 0 15px rgba(255,255,255,0.6), 0 0 30px rgba(255,59,59,0.5);
+  letter-spacing: 4px;
+}
+/* Three concentric rings */
+.sos-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--emergency);
+  pointer-events: none;
+}
+.sos-ring-1 {
+  inset: -10px;
+  animation: emergency-ring-1 2s ease-out infinite;
+}
+.sos-ring-2 {
+  inset: -10px;
+  animation: emergency-ring-2 2s ease-out infinite 0.5s;
+}
+.sos-ring-3 {
+  inset: -10px;
+  animation: emergency-ring-3 2s ease-out infinite 1s;
+}
+/* Scanner/sweep inside button */
+.sos-sweep {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sos-sweep::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.5), transparent);
+  transform-origin: left center;
+  animation: sweep-scan 3s linear infinite;
+}
+@keyframes emergencyBtnPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 40px rgba(255,59,59,0.5),
+      0 0 80px rgba(255,59,59,0.25),
+      0 4px 15px rgba(0,0,0,0.5),
+      inset 0 -3px 8px rgba(0,0,0,0.3),
+      inset 0 2px 4px rgba(255,200,200,0.2);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 60px rgba(255,59,59,0.7),
+      0 0 120px rgba(255,59,59,0.35),
+      0 4px 15px rgba(0,0,0,0.5),
+      inset 0 -3px 8px rgba(0,0,0,0.3),
+      inset 0 2px 4px rgba(255,200,200,0.2);
+    transform: scale(1.05);
+  }
+}
+#emergency-btn:hover {
+  animation: sos-shake 0.6s ease-in-out infinite;
+  box-shadow:
+    0 0 80px rgba(255,59,59,0.8),
+    0 0 160px rgba(255,59,59,0.4),
+    0 4px 15px rgba(0,0,0,0.5) !important;
+}
+#emergency-btn:active {
+  transform: scale(0.92) !important;
+  animation: none;
+}
+
+/* ============================================
+   EMERGENCY OVERLAY - ADVANCED
+   ============================================ */
+#emergency-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: rgba(0,0,0,0.7);
+  animation: overlayFadeIn 0.3s ease;
+}
+#emergency-overlay.active {
+  display: flex;
+}
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* Red vignette */
+.emergency-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.25) 100%);
+  animation: vignette-pulse 1.5s ease-in-out infinite;
+}
+/* Scanning line */
+.emergency-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,59,59,0.6), rgba(255,200,200,0.8), rgba(255,59,59,0.6), transparent);
+  box-shadow: 0 0 20px rgba(255,59,59,0.5);
+  animation: scanning-line 3s linear infinite;
+  pointer-events: none;
+}
+#emergency-overlay .alert-border {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 4px solid var(--emergency);
+  animation: borderFlash 0.5s ease-in-out infinite alternate;
+}
+@keyframes borderFlash {
+  from { border-color: var(--emergency); box-shadow: inset 0 0 100px rgba(255,59,59,0.1); }
+  to { border-color: #ff8800; box-shadow: inset 0 0 100px rgba(255,136,0,0.08); }
+}
+.alert-card {
+  text-align: center;
+  padding: 40px 48px;
+  border-radius: 24px;
+  max-width: 480px;
+  width: 90%;
+  border: 1px solid rgba(255,59,59,0.3);
+  background: rgba(20,10,15,0.88);
+  backdrop-filter: blur(30px);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(255,59,59,0.2);
+  animation: alertCardIn 0.5s cubic-bezier(0.16,1,0.3,1), glitch-flicker 4s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+}
+/* Scanning line within alert card */
+.alert-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,59,59,0.3), transparent);
+  animation: scanning-line 2.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes alertCardIn {
+  from { opacity: 0; transform: scale(0.8) translateY(30px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.alert-icon {
+  width: 80px; height: 80px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,59,59,0.3), rgba(255,59,59,0.05));
+  border: 2px solid rgba(255,59,59,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  animation: alertIconPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 40px rgba(255,59,59,0.3);
+  filter: drop-shadow(0 0 10px rgba(255,59,59,0.5));
+}
+@keyframes alertIconPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(255,59,59,0.3); }
+  50% { transform: scale(1.1); box-shadow: 0 0 50px rgba(255,59,59,0.5); }
+}
+.alert-title {
+  font-family: var(--font-title);
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--emergency);
+  margin-bottom: 8px;
+  text-shadow: 0 0 30px rgba(255,59,59,0.6), 0 0 60px rgba(255,59,59,0.3);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+.alert-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.alert-vehicle-name {
+  font-family: var(--font-title);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+  text-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+.alert-vehicle-type {
+  font-size: 13px;
+  color: var(--amber);
+  font-weight: 500;
+  margin-bottom: 16px;
+  text-shadow: 0 0 8px rgba(255,170,0,0.3);
+}
+.alert-coords {
+  font-family: var(--font-title);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 24px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-glass);
+  display: inline-block;
+  letter-spacing: 1px;
+}
+.alert-timer {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.alert-timer span {
+  color: var(--primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px var(--primary-glow);
+}
+.alert-dismiss {
+  margin-top: 20px;
+  padding: 10px 32px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.alert-dismiss:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 15px rgba(0,212,255,0.15);
+}
+
+/* ============================================
+   MAP MARKERS - SVG BASED
+   ============================================ */
+.marker-vehicle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.marker-dot {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.marker-dot svg.marker-svg {
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 0 3px rgba(255,255,255,0.6));
+}
+.marker-dot.ambulancia {
+  background: linear-gradient(135deg, #00b8d9, #0088aa);
+  border: 2px solid rgba(0,212,255,0.7);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 20px rgba(0,212,255,0.3);
+}
+.marker-dot.policia {
+  background: linear-gradient(135deg, #7b68ee, #5a4fcf);
+  border: 2px solid rgba(123,104,238,0.7);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 20px rgba(123,104,238,0.3);
+}
+.marker-dot.bombeiros {
+  background: linear-gradient(135deg, #ff6b35, #cc4400);
+  border: 2px solid rgba(255,107,53,0.7);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 20px rgba(255,107,53,0.3);
+}
+/* Heading compass arrow */
+.marker-heading {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid;
+  z-index: 3;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+.marker-heading.ambulancia { border-bottom-color: var(--ambulancia-color); color: var(--ambulancia-color); }
+.marker-heading.policia { border-bottom-color: var(--policia-color); color: var(--policia-color); }
+.marker-heading.bombeiros { border-bottom-color: var(--bombeiros-color); color: var(--bombeiros-color); }
+/* Neon animated ring */
+.marker-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid;
+  opacity: 0;
+  z-index: 1;
+}
+.marker-ring-neon {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  z-index: 1;
+  animation: neon-breathe 2s ease-in-out infinite;
+}
+.marker-vehicle.ambulancia .marker-ring { border-color: var(--ambulancia-color); }
+.marker-vehicle.policia .marker-ring { border-color: var(--policia-color); }
+.marker-vehicle.bombeiros .marker-ring { border-color: var(--bombeiros-color); }
+.marker-vehicle.ambulancia .marker-ring-neon { box-shadow: 0 0 12px var(--ambulancia-color), inset 0 0 8px rgba(0,212,255,0.15); border: 1px solid rgba(0,212,255,0.3); border-radius: 50%; }
+.marker-vehicle.policia .marker-ring-neon { box-shadow: 0 0 12px var(--policia-color), inset 0 0 8px rgba(123,104,238,0.15); border: 1px solid rgba(123,104,238,0.3); border-radius: 50%; }
+.marker-vehicle.bombeiros .marker-ring-neon { box-shadow: 0 0 12px var(--bombeiros-color), inset 0 0 8px rgba(255,107,53,0.15); border: 1px solid rgba(255,107,53,0.3); border-radius: 50%; }
+
+.marker-vehicle:hover .marker-ring,
+.marker-vehicle.active .marker-ring {
+  animation: markerRingPulse 1.5s ease-out infinite;
+}
+@keyframes markerRingPulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+/* Trail tail showing direction */
+.marker-trail {
+  position: absolute;
+  width: 3px;
+  height: 20px;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 0 0 2px 2px;
+  z-index: 0;
+  opacity: 0.5;
+}
+.marker-vehicle.ambulancia .marker-trail { background: linear-gradient(to bottom, var(--ambulancia-color), transparent); }
+.marker-vehicle.policia .marker-trail { background: linear-gradient(to bottom, var(--policia-color), transparent); }
+.marker-vehicle.bombeiros .marker-trail { background: linear-gradient(to bottom, var(--bombeiros-color), transparent); }
+
+/* Emergency state for markers */
+.marker-vehicle.emergency-state .marker-dot {
+  background: linear-gradient(135deg, #ff4444, #cc0000) !important;
+  border-color: rgba(255,59,59,0.8) !important;
+  animation: markerEmergencyPulse 0.8s ease-in-out infinite;
+  box-shadow: 0 0 25px rgba(255,59,59,0.5) !important;
+}
+.marker-vehicle.emergency-state .marker-ring {
+  border-color: var(--emergency) !important;
+  animation: markerRingPulse 1s ease-out infinite !important;
+}
+.marker-vehicle.emergency-state .marker-ring-neon {
+  box-shadow: 0 0 20px var(--emergency), inset 0 0 10px rgba(255,59,59,0.2) !important;
+  border-color: rgba(255,59,59,0.5) !important;
+}
+@keyframes markerEmergencyPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+/* Marker label */
+.marker-label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: var(--font-title);
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  background: rgba(0,0,0,0.75);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  text-shadow: 0 0 4px rgba(255,255,255,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ============================================
+   MINI DASHBOARD PANELS
+   ============================================ */
+#mini-dashboard {
+  position: fixed;
+  top: 72px;
+  right: 16px;
+  z-index: 998;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.dash-panel {
+  background: rgba(10,10,30,0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-width: 160px;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  transition: border-color 0.3s;
+}
+.dash-panel:hover {
+  border-color: rgba(0,212,255,0.2);
+}
+.dash-panel-title {
+  font-family: var(--font-title);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.dash-panel-value {
+  font-family: var(--font-title);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  text-shadow: 0 0 10px var(--primary-glow);
+}
+.dash-panel-value.emergency-val {
+  color: var(--emergency);
+  text-shadow: 0 0 10px var(--emergency-glow);
+}
+.dash-panel-value .unit {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+/* Speedometer gauge */
+.speedometer-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+.speedometer-container svg {
+  filter: drop-shadow(0 0 6px var(--primary-glow));
+}
+
+/* ============================================
+   LEAFLET POPUP CUSTOM
+   ============================================ */
+.leaflet-popup-content-wrapper {
+  background: rgba(15,15,35,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid var(--border-glass-light) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 20px rgba(0,212,255,0.1) !important;
+  color: var(--text) !important;
+}
+.leaflet-popup-tip {
+  background: rgba(15,15,35,0.92) !important;
+  border: 1px solid var(--border-glass-light) !important;
+  box-shadow: none !important;
+}
+.leaflet-popup-close-button {
+  color: var(--text-dim) !important;
+  font-size: 18px !important;
+}
+.popup-content {
+  font-family: var(--font);
+  padding: 4px;
+  min-width: 180px;
+}
+.popup-content .popup-title {
+  font-family: var(--font-title);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(0,212,255,0.2);
+}
+.popup-content .popup-type {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  text-transform: capitalize;
+}
+.popup-content .popup-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.popup-content .popup-row .label { color: var(--text-dim); }
+.popup-content .popup-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ============================================
+   EMERGENCY RADIUS ON MAP
+   ============================================ */
+.emergency-radius {
+  animation: radiusPulse 2s ease-in-out infinite;
+}
+@keyframes radiusPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+/* ============================================
+   RED VIGNETTE (applied to body during emergency)
+   ============================================ */
+#screen-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 997;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(255,0,0,0.15) 100%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+#screen-vignette.active {
+  opacity: 1;
+  animation: vignette-pulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================
+   RADAR OVERLAY ON MAP
+   ============================================ */
+.radar-overlay {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 600;
+}
+.radar-overlay .radar-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--emergency);
+  animation: markerRingPulse 2s ease-out infinite;
+}
+.radar-overlay .radar-ring:nth-child(2) {
+  animation-delay: 0.5s;
+}
+.radar-overlay .radar-ring:nth-child(3) {
+  animation-delay: 1s;
+}
+.radar-overlay .radar-sweep-arm {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,59,59,0.6), transparent);
+  transform-origin: left center;
+  animation: sweep-scan 2s linear infinite;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+  #sidebar { width: 280px; }
+  #sidebar-toggle { left: 280px; }
+  #sidebar.collapsed ~ #sidebar-toggle { left: 0; }
+  #emergency-btn { width: 80px; height: 80px; bottom: 16px; right: 16px; }
+  #emergency-btn .btn-icon { font-size: 24px; }
+  #emergency-btn .btn-text { font-size: 10px; }
+  #header .stats { gap: 12px; font-size: 11px; }
+  #mini-dashboard { display: none; }
+}
+@media (max-width: 480px) {
+  #sidebar { width: 260px; }
+  #header .logo .title-text { display: none; }
+  #vehicle-select-container { bottom: 16px; }
+  .digital-clock { display: none; }
+  .signal-bars { display: none; }
+}
+
+/* ============================================
+   ZOOM CONTROLS (custom)
+   ============================================ */
+.custom-zoom {
+  position: fixed;
+  bottom: 140px;
+  right: 24px;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.custom-zoom button {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border-glass-light);
+  background: rgba(15,15,35,0.7);
+  backdrop-filter: blur(16px);
+  color: var(--text);
+  font-size: 18px;
+  font-family: var(--font);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.custom-zoom button:hover {
+  background: rgba(0,212,255,0.1);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 12px rgba(0,212,255,0.15);
+}
+
+/* ============================================
+   ANIMATED ROUTE LINES
+   ============================================ */
+.leaflet-overlay-pane svg path {
+  animation: route-dash 1s linear infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- ============ LOADING SCREEN ============ -->
+<div id="loading-screen">
+  <div class="loading-logo">&#9888;</div>
+  <div class="loading-title">RASTREAMENTO</div>
+  <div class="loading-bar-container">
+    <div class="loading-bar" id="loading-bar"></div>
+  </div>
+  <div class="loading-status" id="loading-status">Inicializando sistema...</div>
+</div>
+
+<!-- ============ PARTICLE CANVAS ============ -->
+<canvas id="particle-canvas"></canvas>
+
+<!-- ============ SCREEN VIGNETTE (for emergencies) ============ -->
+<div id="screen-vignette"></div>
+
+<!-- ============ HEADER ============ -->
+<header id="header">
+  <div class="header-gradient-line"></div>
+  <div class="logo">
+    <div class="icon-ring">&#9888;</div>
+    <span class="title-gradient title-text">RASTREAMENTO DE EMERGENCIA</span>
+  </div>
+  <div class="stats">
+    <div class="signal-bars">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+    <div class="digital-clock" id="digital-clock">00:00:00</div>
+    <div class="stat">
+      <div class="dot blue"></div>
+      <span>Veiculos: <strong id="stat-vehicles">0</strong></span>
+    </div>
+    <div class="stat">
+      <div class="dot amber"></div>
+      <span>Alertas: <strong id="stat-alerts">0</strong></span>
+    </div>
+    <div id="connection-status" class="connection-badge offline">
+      <div class="badge-dot"></div>
+      <span>Offline</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ SIDEBAR ============ -->
+<aside id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Veiculos Ativos</div>
+  </div>
+  <div id="vehicle-list"></div>
+  <div id="emergency-log-section">
+    <div class="sidebar-section" style="padding-bottom:8px;">
+      <div class="sidebar-section-title">Registro de Emergencias</div>
+    </div>
+    <div id="emergency-log">
+      <div class="log-empty">Nenhuma emergencia registrada</div>
+    </div>
+  </div>
+</aside>
+<div id="sidebar-toggle" onclick="toggleSidebar()">&#9664;</div>
+
+<!-- ============ MAP ============ -->
+<div id="map"></div>
+
+<!-- ============ MINI DASHBOARD ============ -->
+<div id="mini-dashboard">
+  <div class="dash-panel">
+    <div class="dash-panel-title">Velocidade Media</div>
+    <div class="dash-panel-value" id="dash-avg-speed">0<span class="unit">km/h</span></div>
+    <div class="speedometer-container">
+      <svg width="80" height="48" viewBox="0 0 80 48">
+        <path d="M 8 44 A 36 36 0 0 1 72 44" fill="none" stroke="rgba(0,212,255,0.15)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M 8 44 A 36 36 0 0 1 72 44" fill="none" stroke="url(#speedGrad)" stroke-width="4" stroke-linecap="round" id="speed-arc"
+              stroke-dasharray="100" stroke-dashoffset="100"/>
+        <line x1="40" y1="44" x2="40" y2="14" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"
+              id="speed-needle" transform="rotate(-90, 40, 44)"/>
+        <circle cx="40" cy="44" r="3" fill="var(--primary)" filter="url(#needleGlow)"/>
+        <defs>
+          <linearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="var(--success)"/>
+            <stop offset="50%" stop-color="var(--primary)"/>
+            <stop offset="100%" stop-color="var(--emergency)"/>
+          </linearGradient>
+          <filter id="needleGlow">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+      </svg>
+    </div>
+  </div>
+  <div class="dash-panel">
+    <div class="dash-panel-title">Emergencias Ativas</div>
+    <div class="dash-panel-value emergency-val" id="dash-emergencies">0</div>
+  </div>
+  <div class="dash-panel">
+    <div class="dash-panel-title">Tempo de Sistema</div>
+    <div class="dash-panel-value" id="dash-uptime" style="font-size:14px;">00:00:00</div>
+  </div>
+</div>
+
+<!-- ============ VEHICLE SELECT ============ -->
+<div id="vehicle-select-container">
+  <select id="vehicle-select" title="Selecione seu veiculo"></select>
+</div>
+
+<!-- ============ CUSTOM ZOOM ============ -->
+<div class="custom-zoom">
+  <button onclick="map.zoomIn()" title="Mais zoom">+</button>
+  <button onclick="map.zoomOut()" title="Menos zoom">&minus;</button>
+</div>
+
+<!-- ============ EMERGENCY BUTTON ============ -->
+<button id="emergency-btn" onclick="triggerEmergency()" title="Solicitar Apoio de Emergencia">
+  <div class="sos-ring sos-ring-1"></div>
+  <div class="sos-ring sos-ring-2"></div>
+  <div class="sos-ring sos-ring-3"></div>
+  <div class="sos-sweep"></div>
+  <span class="btn-icon">&#9888;</span>
+  <span class="btn-text">SOS</span>
+</button>
+
+<!-- ============ EMERGENCY OVERLAY ============ -->
+<div id="emergency-overlay">
+  <div class="emergency-vignette"></div>
+  <div class="emergency-scan-line"></div>
+  <div class="alert-border"></div>
+  <div class="alert-card">
+    <div class="alert-icon">&#128680;</div>
+    <div class="alert-title">Emergencia!</div>
+    <div class="alert-subtitle">Um veiculo solicitou apoio imediato</div>
+    <div class="alert-vehicle-name" id="alert-vehicle-name">---</div>
+    <div class="alert-vehicle-type" id="alert-vehicle-type">---</div>
+    <div class="alert-coords" id="alert-coords">---</div>
+    <div class="alert-timer">Fechando em <span id="alert-countdown">10</span>s</div>
+    <button class="alert-dismiss" onclick="dismissAlert()">Fechar Alerta</button>
+  </div>
+</div>
+
+<!-- ============ SCRIPTS ============ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Socket.IO removed - using fetch polling for Vercel serverless -->
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+<script>
+// ============================================
+// LOADING SCREEN
+// ============================================
+(function() {
+  const bar = document.getElementById('loading-bar');
+  const status = document.getElementById('loading-status');
+  const messages = [
+    'Inicializando sistema...',
+    'Carregando mapa...',
+    'Conectando ao servidor...',
+    'Configurando sensores...',
+    'Sistema pronto!'
+  ];
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += Math.random() * 25 + 10;
+    if (progress > 100) progress = 100;
+    bar.style.width = progress + '%';
+    const msgIdx = Math.min(Math.floor(progress / 25), messages.length - 1);
+    status.textContent = messages[msgIdx];
+    if (progress >= 100) {
+      clearInterval(interval);
+      setTimeout(() => {
+        document.getElementById('loading-screen').classList.add('fade-out');
+      }, 400);
+    }
+  }, 350);
+})();
+
+// ============================================
+// PARTICLE CANVAS BACKGROUND
+// ============================================
+(function() {
+  const canvas = document.getElementById('particle-canvas');
+  const ctx = canvas.getContext('2d');
+  let width, height, particles = [];
+  const PARTICLE_COUNT = 80;
+  const MAX_DIST = 120;
+
+  function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() {
+      this.x = Math.random() * width;
+      this.y = Math.random() * height;
+      this.vx = (Math.random() - 0.5) * 0.4;
+      this.vy = (Math.random() - 0.5) * 0.4;
+      this.r = Math.random() * 2 + 0.5;
+      this.hue = Math.random() > 0.5 ? 200 : 260; // blue or purple
+      this.alpha = Math.random() * 0.4 + 0.1;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      if (this.x < 0) this.x = width;
+      if (this.x > width) this.x = 0;
+      if (this.y < 0) this.y = height;
+      if (this.y > height) this.y = 0;
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${this.hue}, 80%, 70%, ${this.alpha})`;
+      ctx.fill();
+    }
+  }
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(new Particle());
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+    for (let i = 0; i < particles.length; i++) {
+      particles[i].update();
+      particles[i].draw();
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < MAX_DIST) {
+          const alpha = (1 - dist / MAX_DIST) * 0.15;
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(100, 150, 255, ${alpha})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ============================================
+// DIGITAL CLOCK
+// ============================================
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('digital-clock').textContent = h + ':' + m + ':' + s;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ============================================
+// SYSTEM UPTIME
+// ============================================
+const systemStartTime = Date.now();
+function updateUptime() {
+  const elapsed = Math.floor((Date.now() - systemStartTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  const el = document.getElementById('dash-uptime');
+  if (el) el.textContent = h + ':' + m + ':' + s;
+}
+setInterval(updateUptime, 1000);
+
+// ============================================
+// MAP SETUP
+// ============================================
+const map = L.map('map', {
+  center: [-23.5505, -46.6333],
+  zoom: 13,
+  zoomControl: false,
+  attributionControl: true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://carto.com/">CARTO</a> | OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+// ============================================
+// STATE
+// ============================================
+const markers = {};
+let vehicles = [];
+let routingControls = [];
+let emergencyCircle = null;
+let alertTimer = null;
+let alertCountdown = 10;
+let alertCount = 0;
+let activeEmergencies = 0;
+
+// Vehicle type SVG icons
+const TYPE_SVG = {
+  ambulancia: '<svg class="marker-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="6" width="18" height="12" rx="2" stroke="white" stroke-width="1.5" fill="none"/><path d="M12 9V15M9 12H15" stroke="white" stroke-width="2" stroke-linecap="round"/><circle cx="7" cy="18" r="1.5" fill="white"/><circle cx="17" cy="18" r="1.5" fill="white"/></svg>',
+  policia: '<svg class="marker-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L3 8V14C3 18.42 7.03 22 12 22C16.97 22 21 18.42 21 14V8L12 2Z" stroke="white" stroke-width="1.5" fill="none"/><path d="M12 6L8 9V13L12 16L16 13V9L12 6Z" stroke="white" stroke-width="1.5" fill="rgba(255,255,255,0.2)"/><circle cx="12" cy="11" r="1.5" fill="white"/></svg>',
+  bombeiros: '<svg class="marker-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 8 6 8 10C8 12 9 14 10 15C9 13 9.5 11 12 8C14.5 11 15 13 14 15C15 14 16 12 16 10C16 6 12 2 12 2Z" stroke="white" stroke-width="1.5" fill="rgba(255,255,255,0.2)"/><path d="M12 22C8 22 5 19 5 16C5 14 6 12 8 11C7 13 8 15 12 17C16 15 17 13 16 11C18 12 19 14 19 16C19 19 16 22 12 22Z" stroke="white" stroke-width="1.5" fill="rgba(255,255,255,0.15)"/></svg>'
+};
+const TYPE_ICONS = {
+  ambulancia: '\u{1F691}',
+  policia: '\u{1F694}',
+  bombeiros: '\u{1F692}'
+};
+const TYPE_LABELS = {
+  ambulancia: 'Ambulancia',
+  policia: 'Policia',
+  bombeiros: 'Bombeiros'
+};
+
+// ============================================
+// FETCH POLLING (replaces Socket.IO)
+// ============================================
+
+// Initialize DB tables on first load
+fetch('/api/init', { method: 'POST' }).catch(() => {});
+
+let lastEmergencyIds = new Set();
+let emergencyLogLoaded = false;
+
+// Poll vehicles every 2 seconds
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/vehicles');
+    if (!res.ok) throw new Error('Vehicle fetch failed');
+    const data = await res.json();
+    vehicles = data;
+    updateMarkers(data);
+    updateVehicleList(data);
+    updateVehicleSelect(data);
+    document.getElementById('stat-vehicles').textContent = data.length;
+    updateDashboard(data);
+    playPositionBeep();
+    updateConnectionStatus(true);
+
+    // Detect new emergencies from vehicle status changes
+    data.forEach(v => {
+      if (v.status === 'emergency' && !lastEmergencyIds.has(v.id)) {
+        // New emergency detected — trigger alert
+        showEmergencyAlert({
+          vehicleId: v.id,
+          vehicleName: v.name,
+          vehicleType: v.type,
+          lat: v.lat,
+          lng: v.lng,
+          message: 'Solicitacao de apoio!',
+          timestamp: Date.now()
+        });
+        playAlertSound();
+      }
+    });
+    // Update tracked emergency vehicle IDs
+    lastEmergencyIds = new Set(data.filter(v => v.status === 'emergency').map(v => v.id));
+  } catch (err) {
+    updateConnectionStatus(false);
+  }
+}, 2000);
+
+// Poll emergencies every 5 seconds
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/emergency');
+    if (!res.ok) return;
+    const data = await res.json();
+    alertCount = data.length;
+    document.getElementById('stat-alerts').textContent = alertCount;
+    updateEmergencyLog(data);
+  } catch (err) {
+    // Silently ignore — DB may not be configured
+  }
+}, 5000);
+
+function updateEmergencyLog(entries) {
+  const container = document.getElementById('emergency-log');
+  if (!entries || entries.length === 0) {
+    if (!emergencyLogLoaded) {
+      container.innerHTML = '<div class="log-empty">Nenhuma emergencia registrada</div>';
+      emergencyLogLoaded = true;
+    }
+    return;
+  }
+  // Rebuild log from fetched data
+  container.innerHTML = '';
+  entries.forEach(entry => addLogEntry(entry));
+  emergencyLogLoaded = true;
+}
+
+// Initial fetch on load
+(async () => {
+  try {
+    const res = await fetch('/api/vehicles');
+    if (res.ok) {
+      const data = await res.json();
+      vehicles = data;
+      updateMarkers(data);
+      updateVehicleList(data);
+      updateVehicleSelect(data);
+      document.getElementById('stat-vehicles').textContent = data.length;
+      updateDashboard(data);
+      updateConnectionStatus(true);
+    }
+  } catch (e) {
+    updateConnectionStatus(false);
+  }
+})();
+
+// ============================================
+// CONNECTION STATUS
+// ============================================
+function updateConnectionStatus(online) {
+  const el = document.getElementById('connection-status');
+  if (online) {
+    el.className = 'connection-badge online';
+    el.innerHTML = '<div class="badge-dot"></div><span>Online</span>';
+  } else {
+    el.className = 'connection-badge offline';
+    el.innerHTML = '<div class="badge-dot"></div><span>Offline</span>';
+  }
+}
+
+// ============================================
+// MINI DASHBOARD
+// ============================================
+function updateDashboard(vehicleList) {
+  // Average speed
+  if (vehicleList.length > 0) {
+    const avgSpeed = vehicleList.reduce((s, v) => s + v.speed, 0) / vehicleList.length;
+    document.getElementById('dash-avg-speed').innerHTML = Math.round(avgSpeed) + '<span class="unit">km/h</span>';
+    updateSpeedometer(avgSpeed);
+  }
+  // Active emergencies
+  activeEmergencies = vehicleList.filter(v => v.status === 'emergency').length;
+  document.getElementById('dash-emergencies').textContent = activeEmergencies;
+}
+
+function updateSpeedometer(speed) {
+  const maxSpeed = 100;
+  const pct = Math.min(speed / maxSpeed, 1);
+  // Arc length is about 100 (from the path)
+  const arcLen = 100;
+  const offset = arcLen - (arcLen * pct);
+  const arc = document.getElementById('speed-arc');
+  if (arc) {
+    arc.setAttribute('stroke-dashoffset', offset);
+  }
+  // Needle: rotate from -90 (0 speed) to +90 (max speed)
+  const angle = -90 + pct * 180;
+  const needle = document.getElementById('speed-needle');
+  if (needle) {
+    needle.setAttribute('transform', `rotate(${angle}, 40, 44)`);
+  }
+}
+
+// ============================================
+// MAP MARKERS - SVG BASED
+// ============================================
+function createMarkerIcon(vehicle) {
+  const isEmergency = vehicle.status === 'emergency';
+  const emergencyClass = isEmergency ? ' emergency-state' : '';
+  const activeClass = ' active';
+  const headingStyle = `transform: rotate(${vehicle.heading || 0}deg)`;
+  return L.divIcon({
+    className: 'marker-vehicle-wrapper',
+    html: `
+      <div class="marker-vehicle ${vehicle.type}${emergencyClass}${activeClass}" style="position:relative;">
+        <div class="marker-ring"></div>
+        <div class="marker-ring-neon"></div>
+        <div class="marker-dot ${vehicle.type}" style="${headingStyle}">
+          ${TYPE_SVG[vehicle.type]}
+        </div>
+        <div class="marker-heading ${vehicle.type}" style="transform: translateX(-50%) rotate(${(vehicle.heading || 0)}deg); position:absolute; top:-12px; left:50%; transform-origin: center bottom;"></div>
+        <div class="marker-trail" style="transform: translateX(-50%) rotate(${(vehicle.heading || 0) + 180}deg); transform-origin: top center;"></div>
+        <div class="marker-label">${vehicle.id}</div>
+      </div>
+    `,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    popupAnchor: [0, -28]
+  });
+}
+
+function createPopupContent(v) {
+  return `
+    <div class="popup-content">
+      <div class="popup-title">${v.name}</div>
+      <div class="popup-type">${TYPE_ICONS[v.type]} ${TYPE_LABELS[v.type]}</div>
+      <div class="popup-row"><span class="label">Status</span><span class="value" style="color:${v.status === 'emergency' ? 'var(--emergency)' : 'var(--success)'}">${v.status === 'emergency' ? 'EMERGENCIA' : 'Normal'}</span></div>
+      <div class="popup-row"><span class="label">Velocidade</span><span class="value">${v.speed.toFixed(0)} km/h</span></div>
+      <div class="popup-row"><span class="label">Direcao</span><span class="value">${v.heading ? v.heading.toFixed(0) + '\u00B0' : 'N/A'}</span></div>
+      <div class="popup-row"><span class="label">Latitude</span><span class="value">${v.lat.toFixed(5)}</span></div>
+      <div class="popup-row"><span class="label">Longitude</span><span class="value">${v.lng.toFixed(5)}</span></div>
+    </div>
+  `;
+}
+
+function updateMarkers(vehicleList) {
+  vehicleList.forEach(v => {
+    const latLng = L.latLng(v.lat, v.lng);
+    if (markers[v.id]) {
+      // Smooth move
+      markers[v.id].setLatLng(latLng);
+      markers[v.id].setIcon(createMarkerIcon(v));
+      markers[v.id].setPopupContent(createPopupContent(v));
+    } else {
+      const marker = L.marker(latLng, { icon: createMarkerIcon(v) }).addTo(map);
+      marker.bindPopup(createPopupContent(v), { maxWidth: 250 });
+      markers[v.id] = marker;
+    }
+  });
+}
+
+// ============================================
+// SIDEBAR - VEHICLE LIST
+// ============================================
+function updateVehicleList(vehicleList) {
+  const container = document.getElementById('vehicle-list');
+  container.innerHTML = vehicleList.map(v => {
+    const isEmergency = v.status === 'emergency';
+    return `
+      <div class="vehicle-card ${isEmergency ? 'emergency' : ''}" onclick="focusVehicle('${v.id}')">
+        <div class="vehicle-icon ${v.type}">${TYPE_ICONS[v.type]}</div>
+        <div class="vehicle-info">
+          <div class="vehicle-name">${v.name}</div>
+          <div class="vehicle-meta">
+            <span>${TYPE_LABELS[v.type]}</span>
+            <span class="vehicle-speed">${v.speed.toFixed(0)} km/h</span>
+          </div>
+        </div>
+        <div class="status-badge ${v.status}">${isEmergency ? 'SOS' : 'Ativo'}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function focusVehicle(id) {
+  const marker = markers[id];
+  if (marker) {
+    map.setView(marker.getLatLng(), 15, { animate: true, duration: 0.8 });
+    marker.openPopup();
+  }
+}
+
+// ============================================
+// SIDEBAR - EMERGENCY LOG
+// ============================================
+function addLogEntry(entry) {
+  const container = document.getElementById('emergency-log');
+  const emptyMsg = container.querySelector('.log-empty');
+  if (emptyMsg) emptyMsg.remove();
+
+  const time = new Date(entry.timestamp);
+  const timeStr = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `
+    <div class="log-time">${timeStr}</div>
+    <div class="log-message">${TYPE_ICONS[entry.vehicleType]} ${entry.vehicleName} - ${entry.message}</div>
+  `;
+  container.prepend(div);
+
+  // Keep max 15 entries
+  while (container.children.length > 15) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+// ============================================
+// VEHICLE SELECT DROPDOWN
+// ============================================
+let selectInitialized = false;
+function updateVehicleSelect(vehicleList) {
+  if (selectInitialized) return;
+  const select = document.getElementById('vehicle-select');
+  select.innerHTML = vehicleList.map(v =>
+    `<option value="${v.id}">${TYPE_ICONS[v.type]} ${v.name}</option>`
+  ).join('');
+  selectInitialized = true;
+}
+
+// ============================================
+// EMERGENCY BUTTON
+// ============================================
+function triggerEmergency() {
+  const select = document.getElementById('vehicle-select');
+  const vehicleId = select.value;
+  if (!vehicleId) return;
+  socket.emit('emergency', {
+    vehicleId,
+    message: 'Solicitacao de apoio!'
+  });
+}
+
+// ============================================
+// EMERGENCY ALERT OVERLAY
+// ============================================
+function showEmergencyAlert(entry) {
+  const overlay = document.getElementById('emergency-overlay');
+  document.getElementById('alert-vehicle-name').textContent = entry.vehicleName;
+  document.getElementById('alert-vehicle-type').textContent =
+    TYPE_ICONS[entry.vehicleType] + ' ' + TYPE_LABELS[entry.vehicleType];
+  document.getElementById('alert-coords').textContent =
+    `Lat: ${entry.lat.toFixed(5)}  |  Lng: ${entry.lng.toFixed(5)}`;
+
+  overlay.classList.add('active');
+
+  // Activate screen vignette
+  document.getElementById('screen-vignette').classList.add('active');
+
+  // Show emergency circle on map
+  if (emergencyCircle) {
+    map.removeLayer(emergencyCircle);
+  }
+  emergencyCircle = L.circle([entry.lat, entry.lng], {
+    radius: 500,
+    color: '#ff3b3b',
+    fillColor: '#ff3b3b',
+    fillOpacity: 0.15,
+    weight: 2,
+    dashArray: '8,8',
+    className: 'emergency-radius'
+  }).addTo(map);
+
+  // Add radar pulse marker at emergency point
+  addRadarPulse(entry.lat, entry.lng);
+
+  // Pan to emergency
+  map.setView([entry.lat, entry.lng], 14, { animate: true, duration: 1 });
+
+  // Calculate routes from all OTHER vehicles to the emergency
+  clearRoutes();
+  const selectedVehicleId = document.getElementById('vehicle-select').value;
+  vehicles.forEach(v => {
+    if (v.id !== entry.vehicleId) {
+      try {
+        const control = L.Routing.control({
+          waypoints: [
+            L.latLng(v.lat, v.lng),
+            L.latLng(entry.lat, entry.lng)
+          ],
+          router: L.Routing.osrmv1({
+            serviceUrl: 'https://router.project-osrm.org/route/v1'
+          }),
+          lineOptions: {
+            styles: [
+              { color: getTypeColor(v.type), opacity: 0.8, weight: 4, dashArray: '12,8' }
+            ],
+            addWaypoints: false
+          },
+          show: false,
+          addWaypoints: false,
+          draggableWaypoints: false,
+          fitSelectedRoutes: false,
+          createMarker: function() { return null; }
+        }).addTo(map);
+        routingControls.push(control);
+      } catch(e) {
+        // Routing might fail silently, that's OK
+      }
+    }
+  });
+
+  // Auto-dismiss countdown
+  alertCountdown = 10;
+  document.getElementById('alert-countdown').textContent = alertCountdown;
+  if (alertTimer) clearInterval(alertTimer);
+  alertTimer = setInterval(() => {
+    alertCountdown--;
+    document.getElementById('alert-countdown').textContent = alertCountdown;
+    if (alertCountdown <= 0) {
+      dismissAlert();
+    }
+  }, 1000);
+}
+
+// Radar pulse on map at emergency location
+let radarMarker = null;
+function addRadarPulse(lat, lng) {
+  if (radarMarker) {
+    map.removeLayer(radarMarker);
+  }
+  const radarIcon = L.divIcon({
+    className: 'radar-overlay-wrapper',
+    html: `
+      <div class="radar-overlay">
+        <div class="radar-ring"></div>
+        <div class="radar-ring"></div>
+        <div class="radar-ring"></div>
+        <div class="radar-sweep-arm"></div>
+      </div>
+    `,
+    iconSize: [120, 120],
+    iconAnchor: [60, 60]
+  });
+  radarMarker = L.marker([lat, lng], { icon: radarIcon, interactive: false }).addTo(map);
+}
+
+function dismissAlert() {
+  const overlay = document.getElementById('emergency-overlay');
+  overlay.classList.remove('active');
+  document.getElementById('screen-vignette').classList.remove('active');
+  if (alertTimer) {
+    clearInterval(alertTimer);
+    alertTimer = null;
+  }
+  // Keep routes and circle visible for a bit, then clean up
+  setTimeout(() => {
+    clearRoutes();
+    if (emergencyCircle) {
+      map.removeLayer(emergencyCircle);
+      emergencyCircle = null;
+    }
+    if (radarMarker) {
+      map.removeLayer(radarMarker);
+      radarMarker = null;
+    }
+  }, 5000);
+}
+
+function clearRoutes() {
+  routingControls.forEach(rc => {
+    try { map.removeControl(rc); } catch(e) {}
+  });
+  routingControls = [];
+}
+
+function getTypeColor(type) {
+  const colors = {
+    ambulancia: '#00d4ff',
+    policia: '#7b68ee',
+    bombeiros: '#ff6b35'
+  };
+  return colors[type] || '#ffffff';
+}
+
+// ============================================
+// SIDEBAR TOGGLE
+// ============================================
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+  sidebar.classList.toggle('collapsed');
+  toggle.innerHTML = sidebar.classList.contains('collapsed') ? '&#9654;' : '&#9664;';
+}
+
+// ============================================
+// WEB AUDIO API - ALERT SOUND (dramatic siren with vibrato)
+// ============================================
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+function playAlertSound() {
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    const duration = 2.4;
+
+    // Main siren with vibrato
+    for (let i = 0; i < 4; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const vibrato = ctx.createOscillator();
+      const vibratoGain = ctx.createGain();
+
+      // Vibrato LFO
+      vibrato.frequency.value = 8;
+      vibratoGain.gain.value = 30;
+      vibrato.connect(vibratoGain);
+      vibratoGain.connect(osc.frequency);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.type = 'sine';
+      const startTime = now + i * 0.55;
+      osc.frequency.setValueAtTime(800, startTime);
+      osc.frequency.linearRampToValueAtTime(1400, startTime + 0.2);
+      osc.frequency.linearRampToValueAtTime(800, startTime + 0.4);
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.12, startTime + 0.05);
+      gain.gain.setValueAtTime(0.12, startTime + 0.35);
+      gain.gain.linearRampToValueAtTime(0, startTime + 0.5);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.55);
+      vibrato.start(startTime);
+      vibrato.stop(startTime + 0.55);
+    }
+
+    // Undertone for drama
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.connect(subGain);
+    subGain.connect(ctx.destination);
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(120, now);
+    subGain.gain.setValueAtTime(0, now);
+    subGain.gain.linearRampToValueAtTime(0.04, now + 0.1);
+    subGain.gain.setValueAtTime(0.04, now + 2.0);
+    subGain.gain.linearRampToValueAtTime(0, now + 2.4);
+    sub.start(now);
+    sub.stop(now + 2.5);
+  } catch(e) {
+    // Audio might be blocked by browser policy
+  }
+}
+
+// Subtle beep on position update
+let beepCounter = 0;
+function playPositionBeep() {
+  beepCounter++;
+  if (beepCounter % 3 !== 0) return; // Only beep every 3rd update
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1800, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.06);
+    gain.gain.setValueAtTime(0.015, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.08);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  } catch(e) {}
+}
+
+// ============================================
+// SMOOTH MARKER ANIMATION (Leaflet override)
+// ============================================
+(function() {
+  const originalSetLatLng = L.Marker.prototype.setLatLng;
+  L.Marker.prototype.setLatLng = function(latlng) {
+    if (this._latlng && this._map) {
+      const start = this._latlng;
+      const end = L.latLng(latlng);
+      const frames = 30;
+      let frame = 0;
+      const step = () => {
+        frame++;
+        const t = frame / frames;
+        const ease = t * (2 - t); // ease out quad
+        const lat = start.lat + (end.lat - start.lat) * ease;
+        const lng = start.lng + (end.lng - start.lng) * ease;
+        originalSetLatLng.call(this, [lat, lng]);
+        if (frame < frames) {
+          requestAnimationFrame(step);
+        }
+      };
+      step();
+    } else {
+      originalSetLatLng.call(this, latlng);
+    }
+    return this;
+  };
+})();
+</script>
+</body>
+</html>

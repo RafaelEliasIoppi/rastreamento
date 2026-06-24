@@ -1,0 +1,15 @@
+{
+  "name": "rastreamento-emergencia",
+  "version": "2.0.0",
+  "description": "Sistema de rastreamento em tempo real para veiculos de emergencia",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Build complete'",
+    "start": "node local-server.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.0",
+    "express": "^4.21.0"
+  }
+}
