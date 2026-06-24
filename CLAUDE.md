@@ -28,6 +28,7 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - `api/health.js` — `GET` healthcheck → `{status:'ok'}`
 - `api/vehicles.js` — `GET` posições atuais dos 6 veículos; marca `status:'emergency'` se houver emergência ativa (<30s) no banco
 - `api/emergency.js` — `POST` cria emergência (grava posição atual do veículo); `GET` lista últimas 20
+- `api/sectors.js` — `GET` setores de patrulhamento (polígono + viatura responsável)
 - `api/init.js` — `POST` cria a tabela `emergencies` (rodar uma vez após configurar o banco)
 - `lib/db.js` — cliente Neon (`sql`) + flag `isConfigured` (banco opcional)
 - `lib/simulation.js` — simulação **determinística** das 6 viaturas PM. Move cada VTR ao longo de **rotas de rua reais** (interpolação por tempo); mesma posição para um dado timestamp. Exporta `getAllVehiclePositions()`, `calculateForecast()`, `VEHICLES`
@@ -46,6 +47,7 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - **Resposta à emergência**: botão otimista (funciona sem banco) → as outras VTRs calculam a menor rota OSRM, **percorrem e CHEGAM** ao local; rota é polilinha própria persistente (não some no zoom).
 - **Painel de ETA**: ranqueia VTRs por tempo/distância, destaca "MAIS PROXIMA" / "CHEGOU".
 - **Onda de Cessão**: corredor verde preditivo à frente da VTR em emergência.
+- **Controle manual (painel "Geração")**: botões para mostrar/ocultar **VTRs** e desenhar/limpar **Setores** (busca `/api/sectors`) no mapa.
 
 ## Convenções importantes
 - **Estado é stateless**: cada função serverless é isolada. Nunca guarde estado em memória entre requisições — posições vêm da simulação determinística, o resto vai pro Neon.

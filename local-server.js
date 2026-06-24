@@ -37,6 +37,7 @@ function wrapHandler(handlerPath) {
 
 app.all('/api/vehicles',  wrapHandler('./api/vehicles'));
 app.all('/api/emergency', wrapHandler('./api/emergency'));
+app.all('/api/sectors',   wrapHandler('./api/sectors'));
 app.all('/api/init',      wrapHandler('./api/init'));
 app.all('/api/health',    wrapHandler('./api/health'));
 

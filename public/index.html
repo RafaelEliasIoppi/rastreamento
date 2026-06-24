@@ -1476,6 +1476,44 @@ body::before {
   flex-direction: column;
   gap: 4px;
 }
+
+/* ============ PAINEL DE GERACAO / CAMADAS ============ */
+#gen-panel {
+  position: fixed;
+  top: 76px;
+  right: 24px;
+  z-index: 1001;
+  padding: 10px 12px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 150px;
+}
+.gen-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: #88aabb; margin-bottom: 2px;
+}
+.gen-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(0,212,255,0.25);
+  color: #cfe9f5; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .2s ease;
+}
+.gen-btn:hover { background: rgba(0,212,255,0.12); border-color: #00d4ff; }
+.gen-btn.active {
+  background: rgba(0,212,255,0.16);
+  border-color: #00d4ff;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(0,212,255,0.3);
+}
+.sector-label {
+  background: rgba(10,10,26,0.7); border: 1px solid var(--sc,#00d4ff);
+  border-radius: 8px; padding: 2px 8px; font-size: 11px; font-weight: 700;
+  color: #fff; white-space: nowrap; box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
 .custom-zoom button {
   width: 36px; height: 36px;
   border-radius: 10px;
@@ -1620,6 +1658,13 @@ body::before {
 <div class="custom-zoom">
   <button onclick="map.zoomIn()" title="Mais zoom">+</button>
   <button onclick="map.zoomOut()" title="Menos zoom">&minus;</button>
+</div>
+
+<!-- ============ GERACAO / CAMADAS ============ -->
+<div id="gen-panel" class="glass">
+  <div class="gen-title">Geracao</div>
+  <button id="btn-gen-vtrs" class="gen-btn active" onclick="toggleVTRs()">&#128660; VTRs</button>
+  <button id="btn-gen-setores" class="gen-btn" onclick="toggleSetores()">&#9638; Setores</button>
 </div>
 
 <!-- ============ EMERGENCY BUTTON ============ -->
@@ -2018,7 +2063,53 @@ function createPopupContent(v) {
   `;
 }
 
+// ============================================
+// GERACAO / CAMADAS — VTRs e Setores (controle manual)
+// ============================================
+let vtrsVisible = true;
+function toggleVTRs() {
+  vtrsVisible = !vtrsVisible;
+  document.getElementById('btn-gen-vtrs').classList.toggle('active', vtrsVisible);
+  Object.values(markers).forEach(m => {
+    if (vtrsVisible) { if (!map.hasLayer(m)) m.addTo(map); }
+    else if (map.hasLayer(m)) map.removeLayer(m);
+  });
+}
+
+let sectorsLayer = null;
+async function toggleSetores() {
+  const btn = document.getElementById('btn-gen-setores');
+  if (sectorsLayer) {
+    map.removeLayer(sectorsLayer);
+    sectorsLayer = null;
+    btn.classList.remove('active');
+    return;
+  }
+  try {
+    const res = await fetch('/api/sectors');
+    if (!res.ok) return;
+    const sectors = await res.json();
+    sectorsLayer = L.layerGroup().addTo(map);
+    sectors.forEach(s => {
+      L.polygon(s.polygon, {
+        color: s.color, weight: 2, opacity: 0.9,
+        fillColor: s.color, fillOpacity: 0.08, dashArray: '6,6'
+      }).addTo(sectorsLayer);
+      L.marker(s.center, {
+        icon: L.divIcon({
+          className: 'sector-label-wrap',
+          html: `<div class="sector-label" style="--sc:${s.color}">${s.name}<br><small>${s.vehicleName || ''}</small></div>`
+        })
+      }).addTo(sectorsLayer);
+    });
+    btn.classList.add('active');
+  } catch (e) {
+    // silencioso
+  }
+}
+
 function updateMarkers(vehicleList) {
+  if (!vtrsVisible) return; // VTRs ocultas pelo controle manual
   vehicleList.forEach(v => {
     // VTR respondendo a emergencia: posicao controlada pela animacao de resposta,
     // nao deixar o polling da simulacao puxa-la de volta para a patrulha.
