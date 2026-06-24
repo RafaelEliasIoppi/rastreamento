@@ -2289,9 +2289,24 @@ function projectForecast(v, horizonSec = 30, stepSec = 2) {
   return points;
 }
 
-function renderYieldWave(vehicle) {
+async function renderYieldWave(vehicle) {
   clearYieldWave();
-  const pts = projectForecast(vehicle);
+
+  // Previsao SOBRE AS RUAS (lib/routes.json via /api/forecast). Se a API falhar,
+  // cai no projectForecast local (linha reta) para nao quebrar a simulacao.
+  let pts;
+  try {
+    const r = await fetch('/api/forecast?vehicleId=' + encodeURIComponent(vehicle.id) + '&nowMs=' + Date.now());
+    if (!r.ok) throw new Error('forecast ' + r.status);
+    const data = await r.json();
+    pts = (data.points || []).map(p => [p.lat, p.lng]);
+    if (pts.length < 2) throw new Error('forecast vazio');
+  } catch (e) {
+    pts = projectForecast(vehicle);
+  }
+
+  // Outra emergencia pode ter limpado a onda enquanto o fetch resolvia.
+  clearYieldWave();
   yieldWaveLayer = L.layerGroup().addTo(map);
 
   // Corredor: halo largo + linha de energia animada
@@ -2361,6 +2376,39 @@ async function triggerEmergency() {
 // RESPOSTA À EMERGÊNCIA — VTRs percorrem a menor rota (OSRM) e CHEGAM ao local
 // ============================================
 const osrmRouter = L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' });
+
+// Calcula a menor rota from -> to. PREFERE o TomTom (transito real, via
+// /api/route, chave no servidor); cai no OSRM (sem transito) se a chave nao
+// estiver configurada ou a API falhar. Sempre entrega no callback um objeto
+// normalizado { coordinates, summary:{totalTime,totalDistance}, trafficDelaySec, provider }.
+function routeBetween(from, to, cb) {
+  const qs = 'from=' + from.lat + ',' + from.lng + '&to=' + to.lat + ',' + to.lng;
+  function fallbackOsrm() {
+    osrmRouter.route(
+      [{ latLng: L.latLng(from.lat, from.lng) }, { latLng: L.latLng(to.lat, to.lng) }],
+      function(err, routes) {
+        if (err || !routes || !routes[0]) return;
+        const route = routes[0];
+        route.trafficDelaySec = 0;
+        route.provider = 'osrm';
+        cb(route);
+      }
+    );
+  }
+  fetch('/api/route?' + qs)
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('http')))
+    .then(data => {
+      if (!data || !data.configured || !data.points) throw new Error('no-traffic');
+      cb({
+        coordinates: data.points.map(p => L.latLng(p[0], p[1])),
+        summary: { totalTime: data.durationSec, totalDistance: data.distanceM },
+        trafficDelaySec: data.trafficDelaySec || 0,
+        provider: 'tomtom'
+      });
+    })
+    .catch(fallbackOsrm);
+}
+
 let respondingUnits = {};   // id -> { coords, cum, totalDist, startTs, displayMs, arrived }
 let responseRoutes = [];    // polilinhas persistentes (nao somem no zoom)
 let responderRAF = null;
@@ -2520,13 +2568,11 @@ function showEmergencyAlert(entry) {
   vehicles.forEach(v => {
     if (v.id === entry.vehicleId) return;
     try {
-      osrmRouter.route(
-        [{ latLng: L.latLng(v.lat, v.lng) }, { latLng: L.latLng(entry.lat, entry.lng) }],
-        function(err, routes) {
-          if (err || !routes || !routes[0]) return;
-          const route = routes[0];
-          startResponder(v, route);
-        }
+      // Menor rota considerando o TRANSITO ATUAL (TomTom; fallback OSRM).
+      routeBetween(
+        { lat: v.lat, lng: v.lng },
+        { lat: entry.lat, lng: entry.lng },
+        function(route) { startResponder(v, route); }
       );
     } catch (e) {
       // Routing might fail silently, that's OK
