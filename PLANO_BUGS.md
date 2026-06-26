@@ -1,6 +1,6 @@
 # Plano de Correção — 5 Bugs Reais (Code Review)
 
-## Status: PENDENTE (sessão expirou antes de implementar)
+## Status: ✅ CONCLUÍDO — Bugs #1 a #5 corrigidos e validados (endpoints 200; JS inline sem erro de sintaxe)
 
 ---
 
@@ -37,7 +37,10 @@ module.exports = function handler(req, res) {
 
 ---
 
-## Bug #2 — Polling não dispara Onda de Cessão
+## Bug #2 — ✅ CONCLUÍDO — Polling não dispara Onda de Cessão
+
+> FEITO: no caminho do polling (`setInterval` de `/api/vehicles`), após `showEmergencyAlert` + `playAlertSound`, adicionado `renderYieldWave(v)` (passando o veículo `v`, que tem `.id`).
+
 
 **Arquivo:** `public/index.html` — função do polling, onde `showEmergencyAlert(v)` é chamado
 (aprox. linha 1912, dentro do loop de `updateVehicles` ou similar).  
@@ -54,7 +57,10 @@ renderYieldWave(v);
 
 ---
 
-## Bug #3 — VTR solicitante continua patrulhando após emergência
+## Bug #3 — ✅ CONCLUÍDO — VTR solicitante continua patrulhando após emergência
+
+> FEITO: criado `const frozenVehicles = new Map()` (id→{lat,lng}); `showEmergencyAlert` congela a solicitante; `updateMarkers` aplica a posição congelada; `finishEmergencyCleanup` faz `frozenVehicles.clear()` ao fim do atendimento.
+
 
 **Arquivo:** `public/index.html` — `updateMarkers()` e `dismissAlert()`  
 **Problema:** A viatura que acionou a emergência continua recebendo posições do polling e seu
@@ -80,7 +86,10 @@ frozenVehicles.clear();
 
 ---
 
-## Bug #4 — Ocultar VTRs quebra animação de resposta
+## Bug #4 — ✅ CONCLUÍDO — Ocultar VTRs quebra animação de resposta
+
+> FEITO: removido o early return de `updateMarkers`; agora os respondedores são tratados/criados ANTES do `if (!vtrsVisible) return`, e `toggleVTRs` não oculta marcadores de VTRs em `respondingUnits` — a animação continua visível com a camada desligada.
+
 
 **Arquivo:** `public/index.html` — função `updateMarkers()` (aprox. linha 2177)  
 **Problema:** Quando `!vtrsVisible`, a função retorna cedo e nunca cria marcadores para
@@ -110,7 +119,10 @@ controlar via `marker.setOpacity(vtrsVisible ? 1 : 0)` mas sempre criar o marcad
 
 ---
 
-## Bug #5 — Timer de limpeza (12s) corta animação de chegada
+## Bug #5 — ✅ CONCLUÍDO — Timer de limpeza (12s) corta animação de chegada
+
+> FEITO: `dismissAlert` troca o `setTimeout(12s)` fixo por um poller (500ms) que chama `finishEmergencyCleanup` quando `allRespondersArrived()` OU ao atingir o deadline de 20s. Endurecido contra limpeza prematura: como `routeBetween` é assíncrono, contamos `expectedResponders`/`resolvedResponders` (rotas que falham chamam `cb(null)`) e o atalho de chegada só vale quando TODAS as rotas resolveram. Nova emergência cancela o poller pendente.
+
 
 **Arquivo:** `public/index.html` — `setTimeout` de cleanup (aprox. linha 2593)  
 **Problema:** O timer de 12s pode disparar antes de todos os callbacks OSRM assíncronos
@@ -153,3 +165,23 @@ git add -A
 git commit -m "fix: corrige 5 bugs reais (Onda de Cessão, polling, VTR congelada, animação)"
 git push
 ```
+
+---
+
+## Follow-ups conhecidos (FORA do escopo deste plano — não corrigidos aqui)
+
+Levantados no code-review desta sessão. O estado de emergência hoje é **global**
+(uma emergência por vez é o caso de uso real). Em cenários de **emergências
+sobrepostas** existem arestas a tratar no futuro:
+
+- **`frozenVehicles.clear()` é global:** ao limpar uma emergência, libera TODAS as
+  viaturas congeladas — se uma segunda emergência ainda estiver ativa, sua VTR
+  solicitante volta a patrulhar cedo. Correção futura: `frozenVehicles.delete(entry.vehicleId)`
+  por evento.
+- **`respondingUnits` / `expectedResponders` / cleanup são globais:** uma segunda
+  emergência reusa o mesmo estado e pode "sequestrar" a limpeza/animação da primeira.
+  Correção futura: isolar resposta por emergência (objeto de sessão por evento).
+- **Altitude do congelamento:** o "parar para aguardar apoio" é conceito da
+  simulação; hoje é um override no frontend (`updateMarkers`). Ideal mover para
+  `lib/simulation.js`, para que `/api/vehicles` já emita a posição congelada e
+  sectors/Mapa do Medo/ETA fiquem consistentes.

@@ -1856,9 +1856,14 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 const markers = {};
 let vehicles = [];
 let routingControls = [];
+// Viaturas que acionaram emergencia: posicao CONGELADA (nao patrulham mais ate
+// o fim do atendimento). id -> { lat, lng }.
+const frozenVehicles = new Map();
 let emergencyCircle = null;
 let alertTimer = null;
 let alertCountdown = 10;
+let cleanupTimer = null;     // limpeza do atendimento (so quando todos chegam)
+let cleanupDeadline = null;
 let alertCount = 0;
 let activeEmergencies = 0;
 
@@ -1919,6 +1924,7 @@ setInterval(async () => {
           timestamp: Date.now()
         });
         playAlertSound();
+        renderYieldWave(v); // Onda de Cessao tambem quando a emergencia vem do polling
       }
     });
     // Update tracked emergency vehicle IDs
@@ -2072,7 +2078,10 @@ let vtrsVisible = true;
 function toggleVTRs() {
   vtrsVisible = !vtrsVisible;
   document.getElementById('btn-gen-vtrs').classList.toggle('active', vtrsVisible);
-  Object.values(markers).forEach(m => {
+  Object.entries(markers).forEach(([id, m]) => {
+    // VTRs respondendo a emergencia permanecem visiveis mesmo com a camada
+    // oculta — caso contrario a animacao de resposta moveria um marcador some.
+    if (!vtrsVisible && respondingUnits[id]) return;
     if (vtrsVisible) { if (!map.hasLayer(m)) m.addTo(map); }
     else if (map.hasLayer(m)) map.removeLayer(m);
   });
@@ -2174,18 +2183,32 @@ function toggleMedo() {
 map.on('moveend', () => { if (medoActive) drawMedo(); });
 
 function updateMarkers(vehicleList) {
-  if (!vtrsVisible) return; // VTRs ocultas pelo controle manual
   vehicleList.forEach(v => {
+    // VTR que ACIONOU a emergencia: posicao congelada no local do chamado.
+    // O polling continua mandando a posicao de patrulha, mas a viatura "parou"
+    // e fica aguardando apoio ate o fim do atendimento.
+    if (frozenVehicles.has(v.id)) {
+      const p = frozenVehicles.get(v.id);
+      v = Object.assign({}, v, { lat: p.lat, lng: p.lng });
+    }
+
     // VTR respondendo a emergencia: posicao controlada pela animacao de resposta,
     // nao deixar o polling da simulacao puxa-la de volta para a patrulha.
-    if (respondingUnits[v.id]) {
+    const isResponder = !!respondingUnits[v.id];
+    if (isResponder) {
       if (!markers[v.id]) {
         markers[v.id] = L.marker(L.latLng(v.lat, v.lng), { icon: createMarkerIcon(v) }).addTo(map);
       } else {
         markers[v.id].setIcon(createMarkerIcon(v));
+        if (!map.hasLayer(markers[v.id])) markers[v.id].addTo(map);
       }
-      return;
+      return; // posicao gerida pela animacao de resposta
     }
+
+    // VTRs ocultas pelo controle manual: nao desenhar/atualizar marcadores
+    // de patrulha (mas os RESPONDEDORES acima continuam visiveis para a animacao).
+    if (!vtrsVisible) return;
+
     const latLng = L.latLng(v.lat, v.lng);
     if (markers[v.id]) {
       // Smooth move
@@ -2387,7 +2410,7 @@ function routeBetween(from, to, cb) {
     osrmRouter.route(
       [{ latLng: L.latLng(from.lat, from.lng) }, { latLng: L.latLng(to.lat, to.lng) }],
       function(err, routes) {
-        if (err || !routes || !routes[0]) return;
+        if (err || !routes || !routes[0]) return cb(null); // falha: conta como resolvida
         const route = routes[0];
         route.trafficDelaySec = 0;
         route.provider = 'osrm';
@@ -2412,6 +2435,11 @@ function routeBetween(from, to, cb) {
 let respondingUnits = {};   // id -> { coords, cum, totalDist, startTs, displayMs, arrived }
 let responseRoutes = [];    // polilinhas persistentes (nao somem no zoom)
 let responderRAF = null;
+// Roteamento e ASSINCRONO (routeBetween): so podemos considerar o atalho de
+// "todos chegaram" depois que TODAS as rotas resolveram (sucesso ou falha),
+// senao uma VTR rapida que chega primeiro derrubaria a limpeza cedo demais.
+let expectedResponders = 0;
+let resolvedResponders = 0;
 
 // Registra uma VTR respondendo: desenha a rota e inicia o deslocamento ate o local.
 function startResponder(v, route) {
@@ -2527,6 +2555,15 @@ function renderResponsePanel() {
 // EMERGENCY ALERT OVERLAY
 // ============================================
 function showEmergencyAlert(entry) {
+  // Nova emergencia cancela qualquer limpeza pendente da anterior, para nao
+  // apagar as rotas/animacoes recem-criadas no meio do caminho.
+  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+
+  // Congela a viatura solicitante no ponto do chamado: ela "para" e aguarda
+  // apoio, em vez de continuar a patrulha (simulacao deterministica seguiria
+  // movendo-a). Liberada no cleanup de dismissAlert().
+  frozenVehicles.set(entry.vehicleId, { lat: entry.lat, lng: entry.lng });
+
   const overlay = document.getElementById('emergency-overlay');
   document.getElementById('alert-vehicle-name').textContent = entry.vehicleName;
   document.getElementById('alert-vehicle-type').textContent =
@@ -2565,6 +2602,10 @@ function showEmergencyAlert(entry) {
   clearResponse();
   responseEtas = [];
   showResponsePanel(entry.vehicleId);
+  // Quantas rotas vamos despachar (todas as VTRs menos a solicitante). Usado
+  // para so liberar o atalho de "todos chegaram" depois que todas resolverem.
+  expectedResponders = vehicles.filter(v => v.id !== entry.vehicleId).length;
+  resolvedResponders = 0;
   vehicles.forEach(v => {
     if (v.id === entry.vehicleId) return;
     try {
@@ -2572,7 +2613,7 @@ function showEmergencyAlert(entry) {
       routeBetween(
         { lat: v.lat, lng: v.lng },
         { lat: entry.lat, lng: entry.lng },
-        function(route) { startResponder(v, route); }
+        function(route) { resolvedResponders++; if (route) startResponder(v, route); }
       );
     } catch (e) {
       // Routing might fail silently, that's OK
@@ -2614,6 +2655,32 @@ function addRadarPulse(lat, lng) {
   radarMarker = L.marker([lat, lng], { icon: radarIcon, interactive: false }).addTo(map);
 }
 
+function finishEmergencyCleanup() {
+  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+  cleanupDeadline = null;
+  clearResponse();
+  clearRoutes();
+  hideResponsePanel();
+  clearYieldWave();
+  frozenVehicles.clear(); // libera a viatura solicitante para voltar a patrulhar
+  if (emergencyCircle) {
+    map.removeLayer(emergencyCircle);
+    emergencyCircle = null;
+  }
+  if (radarMarker) {
+    map.removeLayer(radarMarker);
+    radarMarker = null;
+  }
+}
+
+function allRespondersArrived() {
+  // So permite o atalho de limpeza quando TODAS as rotas (assincronas) ja
+  // resolveram E todas as VTRs que de fato responderam chegaram. Se todas as
+  // rotas falharem, units.length===0 e quem limpa e o timeout de 20s.
+  const units = Object.values(respondingUnits);
+  return resolvedResponders >= expectedResponders && units.length > 0 && units.every(u => u.arrived);
+}
+
 function dismissAlert() {
   const overlay = document.getElementById('emergency-overlay');
   overlay.classList.remove('active');
@@ -2622,21 +2689,16 @@ function dismissAlert() {
     clearInterval(alertTimer);
     alertTimer = null;
   }
-  // Keep routes and circle visible for a bit, then clean up
-  setTimeout(() => {
-    clearResponse();
-    clearRoutes();
-    hideResponsePanel();
-    clearYieldWave();
-    if (emergencyCircle) {
-      map.removeLayer(emergencyCircle);
-      emergencyCircle = null;
+  // Mantem rotas/circulo visiveis e SO limpa quando TODAS as VTRs respondedoras
+  // chegarem (a animacao pode demorar ate ~11s + a rota OSRM e assincrona).
+  // Timeout de seguranca de 20s evita travar se alguma rota nunca resolver.
+  if (cleanupTimer) clearInterval(cleanupTimer);
+  cleanupDeadline = performance.now() + 20000;
+  cleanupTimer = setInterval(() => {
+    if (allRespondersArrived() || performance.now() >= cleanupDeadline) {
+      finishEmergencyCleanup();
     }
-    if (radarMarker) {
-      map.removeLayer(radarMarker);
-      radarMarker = null;
-    }
-  }, 6000);
+  }, 500);
 }
 
 function clearRoutes() {
