@@ -1,5 +1,20 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+
+// Carrega .env manualmente (sem dependencia de dotenv).
+try {
+  const envFile = fs.readFileSync(path.join(__dirname, '.env'), 'utf-8');
+  envFile.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const eq = trimmed.indexOf('=');
+    if (eq < 1) return;
+    const k = trimmed.slice(0, eq).trim();
+    const v = trimmed.slice(eq + 1).trim();
+    if (k && !process.env[k]) process.env[k] = v;
+  });
+} catch (_) {}
 
 const app = express();
 

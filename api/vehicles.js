@@ -1,4 +1,5 @@
-const { getAllVehiclePositions } = require('../lib/simulation');
+const { getAllVehiclePositions, ROUTES } = require('../lib/simulation');
+const { getTrafficData } = require('../lib/traffic');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,6 +16,20 @@ module.exports = async function handler(req, res) {
 
   try {
     const vehicles = getAllVehiclePositions();
+
+    // Enriquecer cada viatura com dados de transito real da rota.
+    ROUTES.forEach((r, i) => {
+      const v = vehicles[i];
+      if (!v) return;
+      const td = getTrafficData(r.id);
+      if (td) {
+        v.traffic = {
+          currentSpeed: td.currentSpeed,
+          freeFlowSpeed: td.freeFlowSpeed,
+          congestionRatio: Math.round((1 - td.currentSpeed / td.freeFlowSpeed) * 100) / 100,
+        };
+      }
+    });
 
     // Check DB for active emergencies (within last 30 seconds)
     try {

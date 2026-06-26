@@ -31,7 +31,7 @@ fi
 if [ ! -f .env ]; then
   echo "==> Aviso: .env nao encontrado. Rodando em MODO SIMULACAO."
   echo "    Viaturas e botao de emergencia funcionam; historico nao persiste."
-  echo "    Para persistir, configure DATABASE_URL (veja .env.example)."
+  echo "    Para persistir, configure DATABASE_URL e TOMTOM_KEY (veja .env.example)."
 fi
 
 echo "==> Subindo servidor em http://localhost:${PORT}"
