@@ -55,6 +55,12 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - Todo handler em `api/` seta headers CORS e trata `OPTIONS` (preflight) + método inválido (405).
 - A tabela `emergencies` é a única fonte persistente; "veículo em emergência" = registro <30s atrás.
 
+## Recent Changes
+
+### 2026-06-26 — CSS Vehicle Cards & Mapa do Medo
+- **CSS vehicle cards**: removido `cursor: pointer` + `perspective`/3D hover do `.vehicle-card` que quebrava o botão SOS dentro. 3D hover removido (causava clipping do botão). `.vehicle-card-main` agora tem o hover sutil com brilho. Adicionado `min-width: 0` para evitar estouro de layout.
+- **Mapa do Medo realista**: adicionado polígono `MEDO_LAND` que traça a orla do Guaíba em Porto Alegre + função `isOnLand()` (ray-casting). `drawMedo()` ignora células cujo centro está fora da terra firme — não pinta mais o lago.
+
 ## Regras
 - **REGRA PRINCIPAL Nº1 — SEMPRE usar o agente `rastreamento-dev`** ([.claude/agents/rastreamento-dev.md](.claude/agents/rastreamento-dev.md)) para QUALQUER tarefa neste projeto. É o agente padrão da sessão (carregado via hook `SessionStart`). Nunca trabalhar sem ele.
 - UI sempre em Português (Brasil)

@@ -257,10 +257,9 @@ body::before {
   inset: 0;
   z-index: 1;
 }
-/* Clareia FORTE o basemap (dark_all e quase preto) mantendo o tema dark da marca.
-   Brilho + contraste altos deixam as ruas bem visiveis sem virar mapa claro. */
+/* Ajuste sutil no CartoDB Voyager. */
 #map .leaflet-tile-pane {
-  filter: brightness(2.1) contrast(1.5) saturate(1.4);
+  filter: brightness(1.05) saturate(1.1);
 }
 .leaflet-control-zoom { display: none !important; }
 .leaflet-routing-container { display: none !important; }
@@ -553,18 +552,15 @@ body::before {
 .vehicle-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px 12px;
   margin-bottom: 8px;
   border-radius: 12px;
   border: 1px solid var(--border-glass);
   background: rgba(255,255,255,0.02);
-  cursor: pointer;
   transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
   position: relative;
   overflow: hidden;
-  perspective: 800px;
-  transform-style: preserve-3d;
 }
 /* Holographic shimmer overlay */
 .vehicle-card::before {
@@ -580,7 +576,6 @@ body::before {
 .vehicle-card:hover {
   border-color: rgba(0,212,255,0.25);
   background: rgba(255,255,255,0.04);
-  transform: perspective(800px) rotateY(-2deg) rotateX(1deg) translateX(4px);
   box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 15px rgba(0,212,255,0.1);
 }
 .vehicle-card:hover::before {
@@ -599,7 +594,6 @@ body::before {
   animation: holographic-shimmer 1.2s linear infinite;
 }
 .vehicle-card.emergency:hover {
-  transform: perspective(800px) rotateY(-2deg) rotateX(1deg) translateX(4px);
   box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 20px rgba(255,59,59,0.2);
 }
 @keyframes cardEmergencyPulse {
@@ -685,6 +679,55 @@ body::before {
 @keyframes statusBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* SOS button per VTR */
+.sos-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--emergency);
+  background: rgba(255,59,59,0.1);
+  color: var(--emergency);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s ease;
+  letter-spacing: 1px;
+}
+.sos-btn:hover {
+  background: rgba(255,59,59,0.25);
+  box-shadow: 0 0 12px rgba(255,59,59,0.3);
+}
+.sos-btn.active {
+  background: var(--emergency);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(255,59,59,0.5);
+  animation: sosPulse 1s ease-in-out infinite;
+}
+.sos-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+@keyframes sosPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(255,59,59,0.3); }
+  50% { box-shadow: 0 0 20px rgba(255,59,59,0.6); }
+}
+.vehicle-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: 8px;
+  transition: all .2s ease;
+}
+.vehicle-card-main:hover {
+  background: rgba(0,212,255,0.04);
 }
 
 /* Emergency log */
@@ -1063,6 +1106,24 @@ body::before {
   color: var(--primary);
   box-shadow: 0 0 15px rgba(0,212,255,0.15);
 }
+.alert-dismiss.sos-active {
+  border-color: var(--emergency);
+  background: rgba(255,59,59,0.15);
+  color: var(--emergency);
+  font-weight: 800;
+  letter-spacing: 2px;
+  animation: sosPulseBtn 1s ease-in-out infinite;
+}
+.alert-dismiss.sos-active:hover {
+  background: rgba(255,59,59,0.3);
+  border-color: var(--emergency);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(255,59,59,0.4);
+}
+@keyframes sosPulseBtn {
+  0%, 100% { box-shadow: 0 0 10px rgba(255,59,59,0.2); }
+  50% { box-shadow: 0 0 25px rgba(255,59,59,0.5); }
+}
 
 /* ============================================
    MAP MARKERS - SVG BASED
@@ -1388,7 +1449,7 @@ body::before {
 .response-tag { font-size: 9px; color: #00ff88; font-weight: 700; letter-spacing: .5px; }
 .response-empty { font-size: 11px; color: #88aabb; margin-top: 6px; }
 .response-item.arrived { background: rgba(0,255,136,0.16); border-left-color: #00ff88; }
-.response-route { filter: drop-shadow(0 0 4px rgba(0,212,255,0.4)); animation: routeDash 1s linear infinite; }
+.response-route { filter: drop-shadow(0 0 3px rgba(0,212,255,0.2)); animation: routeDash 1.5s linear infinite; }
 @keyframes routeDash { to { stroke-dashoffset: -18; } }
 
 /* ============================================
@@ -1649,11 +1710,6 @@ body::before {
   </div>
 </div>
 
-<!-- ============ VEHICLE SELECT ============ -->
-<div id="vehicle-select-container">
-  <select id="vehicle-select" title="Selecione seu veiculo"></select>
-</div>
-
 <!-- ============ CUSTOM ZOOM ============ -->
 <div class="custom-zoom">
   <button onclick="map.zoomIn()" title="Mais zoom">+</button>
@@ -1667,16 +1723,6 @@ body::before {
   <button id="btn-gen-setores" class="gen-btn" onclick="toggleSetores()">&#9638; Setores</button>
   <button id="btn-gen-medo" class="gen-btn" onclick="toggleMedo()">&#128293; Mapa do Medo</button>
 </div>
-
-<!-- ============ EMERGENCY BUTTON ============ -->
-<button id="emergency-btn" onclick="triggerEmergency()" title="Solicitar Apoio de Emergencia">
-  <div class="sos-ring sos-ring-1"></div>
-  <div class="sos-ring sos-ring-2"></div>
-  <div class="sos-ring sos-ring-3"></div>
-  <div class="sos-sweep"></div>
-  <span class="btn-icon">&#9888;</span>
-  <span class="btn-text">SOS</span>
-</button>
 
 <!-- ============ RESPONSE ETA PANEL ============ -->
 <div id="response-panel" class="glass">
@@ -1697,8 +1743,8 @@ body::before {
     <div class="alert-vehicle-name" id="alert-vehicle-name">---</div>
     <div class="alert-vehicle-type" id="alert-vehicle-type">---</div>
     <div class="alert-coords" id="alert-coords">---</div>
-    <div class="alert-timer">Fechando em <span id="alert-countdown">10</span>s</div>
-    <button class="alert-dismiss" onclick="dismissAlert()">Fechar Alerta</button>
+    <div class="alert-timer"><span id="alert-status-msg">Aguardando apoio das demais VTRs</span></div>
+    <button class="alert-dismiss sos-active" id="alert-dismiss-btn" onclick="deactivateCurrentEmergency()">DESATIVAR SOS</button>
   </div>
 </div>
 
@@ -1845,9 +1891,9 @@ const map = L.map('map', {
   attributionControl: true
 });
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://carto.com/">CARTO</a> | OpenStreetMap',
-  maxZoom: 19
+  maxZoom: 20
 }).addTo(map);
 
 // ============================================
@@ -1860,8 +1906,6 @@ let routingControls = [];
 // o fim do atendimento). id -> { lat, lng }.
 const frozenVehicles = new Map();
 let emergencyCircle = null;
-let alertTimer = null;
-let alertCountdown = 10;
 let cleanupTimer = null;     // limpeza do atendimento (so quando todos chegam)
 let cleanupDeadline = null;
 // Qual VTR e a SOLICITANTE do atendimento em andamento. Usado no cleanup para
@@ -1946,9 +1990,12 @@ setInterval(async () => {
     const data = raw.map(v => {
       if (frozenVehicles.has(v.id)) {
         const p = frozenVehicles.get(v.id);
-        // VTR congelada nao patrulha: posicao fixa no local do chamado e, para os
-        // derivados, ela esta indisponivel (em emergencia/aguardando apoio).
         return Object.assign({}, v, { lat: p.lat, lng: p.lng, status: 'emergency' });
+      }
+      // VTR respondendo: usar velocidade real da rota em vez da velocidade de patrulha
+      const responder = respondingUnits[v.id];
+      if (responder && !responder.arrived) {
+        return Object.assign({}, v, { speed: responder.speed, status: 'emergency' });
       }
       return v;
     });
@@ -2160,6 +2207,32 @@ async function toggleSetores() {
 let medoLayer = null;
 let medoActive = false;
 
+// Mapa do Medo — Polígono de terra firme (exclui Guaíba)
+const MEDO_LAND = [
+  [-29.975, -51.145],
+  [-29.975, -51.220],
+  [-29.990, -51.226],
+  [-30.005, -51.230],
+  [-30.020, -51.234],
+  [-30.035, -51.236],
+  [-30.050, -51.235],
+  [-30.065, -51.230],
+  [-30.075, -51.224],
+  [-30.085, -51.216],
+  [-30.095, -51.206],
+  [-30.100, -51.196],
+  [-30.100, -51.145],
+];
+function isOnLand(lat, lng) {
+  let inside = false;
+  for (let i = 0, j = MEDO_LAND.length - 1; i < MEDO_LAND.length; j = i++) {
+    const yi = MEDO_LAND[i][0], xi = MEDO_LAND[i][1];
+    const yj = MEDO_LAND[j][0], xj = MEDO_LAND[j][1];
+    if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 function medoDistanceKm(aLat, aLng, bLat, bLng) {
   const m = ((aLat + bLat) / 2) * Math.PI / 180;
   const dLat = (bLat - aLat) * 111.32;
@@ -2170,12 +2243,13 @@ function medoDistanceKm(aLat, aLng, bLat, bLng) {
 function medoRisk(lat, lng) {
   let best = Infinity;
   vehicles.forEach(v => {
-    if (v.status === 'emergency') return; // ocupada: nao cobre
-    const min = (medoDistanceKm(lat, lng, v.lat, v.lng) / 40) * 60; // ~40 km/h
+    if (v.status === 'emergency') return;
+    const speedKmh = Math.max(20, v.speed || 40);
+    const min = (medoDistanceKm(lat, lng, v.lat, v.lng) / speedKmh) * 60;
     if (min < best) best = min;
   });
-  const clamped = Math.max(2, Math.min(6, best)); // 2min(otimo)..6min(critico)
-  return (clamped - 2) / 4; // 0=verde .. 1=vermelho
+  const clamped = Math.max(2, Math.min(6, best));
+  return (clamped - 2) / 4;
 }
 
 function medoColor(r) {
@@ -2198,7 +2272,9 @@ function drawMedo() {
     for (let c = 0; c < COLS; c++) {
       const south = b.getSouth() + latStep * r;
       const west = b.getWest() + lngStep * c;
-      const risk = medoRisk(south + latStep / 2, west + lngStep / 2);
+      const clat = south + latStep / 2, clng = west + lngStep / 2;
+      if (!isOnLand(clat, clng)) continue;
+      const risk = medoRisk(clat, clng);
       L.rectangle([[south, west], [south + latStep, west + lngStep]], {
         stroke: false, fillColor: medoColor(risk), fillOpacity: 0.06 + risk * 0.34
       }).addTo(medoLayer);
@@ -2230,6 +2306,7 @@ function updateMarkers(vehicleList) {
         markers[v.id].setIcon(createMarkerIcon(v));
         if (!map.hasLayer(markers[v.id])) markers[v.id].addTo(map);
       }
+      markers[v.id].setPopupContent(createPopupContent(v));
       return; // posicao gerida pela animacao de resposta
     }
 
@@ -2258,17 +2335,23 @@ function updateVehicleList(vehicleList) {
   const container = document.getElementById('vehicle-list');
   container.innerHTML = vehicleList.map(v => {
     const isEmergency = v.status === 'emergency';
+    const isCurrentEmergency = v.id === currentEmergencyVehicleId;
+    const sosBtnClass = isCurrentEmergency ? 'sos-btn active' : (isEmergency ? 'sos-btn disabled' : 'sos-btn');
+    const sosLabel = isCurrentEmergency ? 'DESATIVAR SOS' : (isEmergency ? 'EM APOIO' : 'SOS');
     return `
-      <div class="vehicle-card ${isEmergency ? 'emergency' : ''}" onclick="focusVehicle('${v.id}')">
-        <div class="vehicle-icon ${v.type}">${TYPE_ICONS[v.type]}</div>
-        <div class="vehicle-info">
-          <div class="vehicle-name">${v.name}</div>
-          <div class="vehicle-meta">
-            <span>${TYPE_LABELS[v.type]}</span>
-            <span class="vehicle-speed">${v.speed.toFixed(0)} km/h</span>
+      <div class="vehicle-card ${isEmergency ? 'emergency' : ''}">
+        <div class="vehicle-card-main" onclick="focusVehicle('${v.id}')">
+          <div class="vehicle-icon ${v.type}">${TYPE_ICONS[v.type]}</div>
+          <div class="vehicle-info">
+            <div class="vehicle-name">${v.name}</div>
+            <div class="vehicle-meta">
+              <span>${TYPE_LABELS[v.type]}</span>
+              <span class="vehicle-speed">${v.speed.toFixed(0)} km/h</span>
+            </div>
           </div>
+          <div class="status-badge ${v.status}">${isEmergency ? 'SOS' : 'Ativo'}</div>
         </div>
-        <div class="status-badge ${v.status}">${isEmergency ? 'SOS' : 'Ativo'}</div>
+        <button class="${sosBtnClass}" onclick="event.stopPropagation(); toggleVehicleEmergency('${v.id}')">${sosLabel}</button>
       </div>
     `;
   }).join('');
@@ -2388,15 +2471,28 @@ function clearYieldWave() {
 // ============================================
 // EMERGENCY BUTTON
 // ============================================
-async function triggerEmergency() {
-  const select = document.getElementById('vehicle-select');
-  const vehicleId = select.value;
-  if (!vehicleId) return;
+function deactivateCurrentEmergency() {
+  if (currentEmergencyVehicleId) {
+    toggleVehicleEmergency(currentEmergencyVehicleId);
+  }
+}
+
+function toggleVehicleEmergency(vehicleId) {
+  // Se esta VTR ja esta em emergencia, desativa
+  if (vehicleId === currentEmergencyVehicleId) {
+    finishEmergencyCleanup();
+    document.getElementById('emergency-overlay').classList.remove('active');
+    document.getElementById('screen-vignette').classList.remove('active');
+    clearYieldWave();
+    refreshSidebarState();
+    return;
+  }
+  // Se outra emergencia ja esta ativa, nao permite
+  if (currentEmergencyVehicleId !== null) return;
 
   const vehicle = vehicles.find(v => v.id === vehicleId);
   if (!vehicle) return;
 
-  // Disparo otimista: a simulacao funciona mesmo sem banco (Neon) configurado.
   const entry = {
     vehicleId: vehicle.id,
     vehicleName: vehicle.name,
@@ -2408,19 +2504,32 @@ async function triggerEmergency() {
   };
   showEmergencyAlert(entry);
   playAlertSound();
-  renderYieldWave(vehicle);            // Onda de Cessao a partir do veiculo
+  renderYieldWave(vehicle);
   lastEmergencyIds.add(vehicle.id);
+  refreshSidebarState();
 
-  // Persiste no backend (best-effort — grava quando o Neon esta configurado).
   try {
-    await fetch('/api/emergency', {
+    fetch('/api/emergency', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vehicleId, message: 'Solicitacao de apoio!' })
     });
-  } catch (e) {
-    // Simulacao continua mesmo se a persistencia falhar.
-  }
+  } catch (e) {}
+}
+
+function refreshSidebarState() {
+  const data = vehicles.map(v => {
+    if (frozenVehicles.has(v.id)) {
+      const p = frozenVehicles.get(v.id);
+      return Object.assign({}, v, { lat: p.lat, lng: p.lng, status: 'emergency' });
+    }
+    const responder = respondingUnits[v.id];
+    if (responder && !responder.arrived) {
+      return Object.assign({}, v, { speed: responder.speed, status: 'emergency' });
+    }
+    return v;
+  });
+  updateVehicleList(data);
 }
 
 // ============================================
@@ -2483,21 +2592,29 @@ function startResponder(v, route) {
 
   // Linha de rota PERSISTENTE (polilinha propria — sobrevive a zoom/pan)
   const poly = L.polyline(coords, {
-    color: getTypeColor(v.type), weight: 4, opacity: 0.85,
-    dashArray: '10,8', className: 'response-route'
+    color: getTypeColor(v.type), weight: 3, opacity: 0.45,
+    dashArray: '8,6', className: 'response-route'
   }).addTo(map);
   responseRoutes.push(poly);
 
-  // ETA para o painel (menor rota OSRM)
+  // Velocidade de emergencia: ate 80 km/h, ajustada pelo transito (TomTom).
+  // Transito intenso reduz a velocidade; via livre permite 80 km/h.
+  const MAX_SPEED_MPS = 80 / 3.6;
+  const trafficDelaySec = route.trafficDelaySec || 0;
+  const totalTimeSec = route.summary.totalTime;
+  const trafficFactor = totalTimeSec > 0 ? Math.max(0.35, (totalTimeSec - trafficDelaySec) / totalTimeSec) : 1.0;
+  const emergencySpeedMps = MAX_SPEED_MPS * trafficFactor;
+  const displayMs = (route.summary.totalDistance / emergencySpeedMps) * 1000;
+  const responseSpeedKmh = Math.round(emergencySpeedMps * 3.6 * 10) / 10;
+  const emergencyEtaSec = displayMs / 1000;
+  respondingUnits[v.id] = { id: v.id, coords, cum, totalDist, startTs: performance.now(), displayMs, speed: responseSpeedKmh, arrived: false };
+  if (markers[v.id]) markers[v.id]._vtrResponder = true;
+
+  // ETA para o painel (velocidade de emergencia ajustada pelo transito)
   responseEtas = responseEtas.filter(x => x.id !== v.id);
   responseEtas.push({ id: v.id, name: v.name, type: v.type,
-    time: route.summary.totalTime, dist: route.summary.totalDistance, arrived: false });
+    time: emergencyEtaSec, dist: route.summary.totalDistance, arrived: false });
   renderResponsePanel();
-
-  // Tempo de exibicao: comprime o ETA real para vermos a chegada (5s..11s),
-  // preservando a ordem (a mais proxima chega primeiro).
-  const displayMs = Math.min(11000, Math.max(5000, route.summary.totalTime * 200));
-  respondingUnits[v.id] = { id: v.id, coords, cum, totalDist, startTs: performance.now(), displayMs, arrived: false };
 
   if (!responderRAF) responderRAF = requestAnimationFrame(animateResponders);
 }
@@ -2506,11 +2623,22 @@ function posAlong(u, d) {
   const { cum, coords } = u;
   let i = 1;
   while (i < cum.length && cum[i] < d) i++;
-  if (i >= coords.length) return coords[coords.length - 1];
+  if (i >= coords.length) return { latlng: coords[coords.length - 1], heading: headingBetween(coords[coords.length - 2], coords[coords.length - 1]) };
   const segStart = cum[i - 1], segEnd = cum[i];
   const t = segEnd > segStart ? (d - segStart) / (segEnd - segStart) : 0;
   const a = coords[i - 1], b = coords[i];
-  return L.latLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t);
+  const lat = a.lat + (b.lat - a.lat) * t;
+  const lng = a.lng + (b.lng - a.lng) * t;
+  const hdg = headingBetween(a, b);
+  return { latlng: L.latLng(lat, lng), heading: hdg };
+}
+
+function headingBetween(a, b) {
+  const dNorth = b.lat - a.lat;
+  const dEast = (b.lng - a.lng) * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  let h = Math.atan2(dEast, dNorth) * (180 / Math.PI);
+  if (h < 0) h += 360;
+  return Math.round(h * 10) / 10;
 }
 
 function animateResponders() {
@@ -2520,11 +2648,29 @@ function animateResponders() {
     if (u.arrived) return;
     active = true;
     const t = Math.min(1, (now - u.startTs) / u.displayMs);
-    const pos = posAlong(u, t * u.totalDist);
-    if (markers[u.id]) markers[u.id].setLatLng(pos);
+    const { latlng, heading } = posAlong(u, t * u.totalDist);
+    if (markers[u.id]) {
+      markers[u.id].setLatLng(latlng);
+      const v = vehicles.find(x => x.id === u.id);
+      if (v) {
+        const updated = Object.assign({}, v, { lat: latlng.lat, lng: latlng.lng, heading, speed: u.speed, status: 'emergency' });
+        markers[u.id].setIcon(createMarkerIcon(updated));
+        markers[u.id].setPopupContent(createPopupContent(updated));
+      }
+    }
     if (t >= 1) {
       u.arrived = true;
-      if (markers[u.id]) markers[u.id].setLatLng(u.coords[u.coords.length - 1]);
+      const finalPos = u.coords[u.coords.length - 1];
+      if (markers[u.id]) {
+        markers[u.id].setLatLng(finalPos);
+        const v = vehicles.find(x => x.id === u.id);
+        if (v) {
+          const hdg = u.coords.length > 1 ? headingBetween(u.coords[u.coords.length - 2], finalPos) : v.heading;
+          const updated = Object.assign({}, v, { lat: finalPos.lat, lng: finalPos.lng, heading: hdg, speed: u.speed, status: 'emergency' });
+          markers[u.id].setIcon(createMarkerIcon(updated));
+          markers[u.id].setPopupContent(createPopupContent(updated));
+        }
+      }
       const eta = responseEtas.find(e => e.id === u.id);
       if (eta) { eta.arrived = true; renderResponsePanel(); }
     }
@@ -2534,6 +2680,7 @@ function animateResponders() {
 
 function clearResponse() {
   if (responderRAF) { cancelAnimationFrame(responderRAF); responderRAF = null; }
+  Object.keys(respondingUnits).forEach(id => { if (markers[id]) markers[id]._vtrResponder = false; });
   respondingUnits = {};
   responseRoutes.forEach(p => { try { map.removeLayer(p); } catch (e) {} });
   responseRoutes = [];
@@ -2656,17 +2803,14 @@ function showEmergencyAlert(entry) {
     }
   });
 
-  // Auto-dismiss countdown
-  alertCountdown = 6;
-  document.getElementById('alert-countdown').textContent = alertCountdown;
-  if (alertTimer) clearInterval(alertTimer);
-  alertTimer = setInterval(() => {
-    alertCountdown--;
-    document.getElementById('alert-countdown').textContent = alertCountdown;
-    if (alertCountdown <= 0) {
-      dismissAlert();
-    }
-  }, 1000);
+  // Mostra o status no overlay
+  document.getElementById('alert-status-msg').textContent = entry.vehicleName + ' - Aguardando apoio das demais VTRs';
+
+  // Auto-dismiss do overlay apos 4s (emergencia continua ativa no mapa).
+  setTimeout(() => {
+    document.getElementById('emergency-overlay').classList.remove('active');
+    document.getElementById('screen-vignette').classList.remove('active');
+  }, 4000);
 }
 
 // Radar pulse on map at emergency location
@@ -2731,24 +2875,9 @@ function allRespondersArrived() {
   return resolvedResponders >= expectedResponders && units.length > 0 && units.every(u => u.arrived);
 }
 
-function dismissAlert() {
-  const overlay = document.getElementById('emergency-overlay');
-  overlay.classList.remove('active');
+function hideEmergencyOverlay() {
+  document.getElementById('emergency-overlay').classList.remove('active');
   document.getElementById('screen-vignette').classList.remove('active');
-  if (alertTimer) {
-    clearInterval(alertTimer);
-    alertTimer = null;
-  }
-  // Mantem rotas/circulo visiveis e SO limpa quando TODAS as VTRs respondedoras
-  // chegarem (a animacao pode demorar ate ~11s + a rota OSRM e assincrona).
-  // Timeout de seguranca de 20s evita travar se alguma rota nunca resolver.
-  if (cleanupTimer) clearInterval(cleanupTimer);
-  cleanupDeadline = performance.now() + 20000;
-  cleanupTimer = setInterval(() => {
-    if (allRespondersArrived() || performance.now() >= cleanupDeadline) {
-      finishEmergencyCleanup();
-    }
-  }, 500);
 }
 
 function clearRoutes() {
@@ -2870,9 +2999,14 @@ function playPositionBeep() {
 // ============================================
 // SMOOTH MARKER ANIMATION (Leaflet override)
 // ============================================
+// Nao interfere nas VTRs respondendo a emergencia (animadas pelo animateResponders).
 (function() {
   const originalSetLatLng = L.Marker.prototype.setLatLng;
   L.Marker.prototype.setLatLng = function(latlng) {
+    if (this._vtrResponder) {
+      originalSetLatLng.call(this, latlng);
+      return this;
+    }
     if (this._latlng && this._map) {
       const start = this._latlng;
       const end = L.latLng(latlng);
@@ -2881,7 +3015,7 @@ function playPositionBeep() {
       const step = () => {
         frame++;
         const t = frame / frames;
-        const ease = t * (2 - t); // ease out quad
+        const ease = t * (2 - t);
         const lat = start.lat + (end.lat - start.lat) * ease;
         const lng = start.lng + (end.lng - start.lng) * ease;
         originalSetLatLng.call(this, [lat, lng]);

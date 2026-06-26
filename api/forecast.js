@@ -3,7 +3,8 @@
 // usada pela "Onda de Cessao". Sem isso o frontend projetava em linha reta,
 // o que podia jogar o corredor dentro do Lago Guaiba (BUG GRAVE).
 
-const { calculateForecast, VEHICLES } = require('../lib/simulation');
+const { calculateForecast, VEHICLES, ROUTES } = require('../lib/simulation');
+const { getTrafficFactor, getTrafficData } = require('../lib/traffic');
 
 module.exports = function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -24,8 +25,15 @@ module.exports = function handler(req, res) {
     if (!vehicle) {
       return res.status(404).json({ error: 'Vehicle not found' });
     }
-    const points = calculateForecast(vehicle, nowMs);
-    return res.status(200).json({ vehicleId, points });
+    const route = ROUTES[(vehicle.seed - 1) % ROUTES.length];
+    const trafficFactor = getTrafficFactor(route.id);
+    const points = calculateForecast(vehicle, nowMs, 30, 2, trafficFactor);
+    const td = getTrafficData(route.id);
+    return res.status(200).json({
+      vehicleId,
+      points,
+      traffic: td ? { currentSpeed: td.currentSpeed, freeFlowSpeed: td.freeFlowSpeed, factor: td.factor || trafficFactor } : null,
+    });
   } catch (err) {
     console.error('Error in /api/forecast:', err);
     return res.status(500).json({ error: 'Internal server error' });

@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
       const v = vehicles[i];
       if (!v) return;
       const td = getTrafficData(r.id);
-      if (td) {
+      if (td && td.currentSpeed != null) {
         v.traffic = {
           currentSpeed: td.currentSpeed,
           freeFlowSpeed: td.freeFlowSpeed,
