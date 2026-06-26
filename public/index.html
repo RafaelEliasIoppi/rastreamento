@@ -1902,19 +1902,12 @@ setInterval(async () => {
   try {
     const res = await fetch('/api/vehicles');
     if (!res.ok) throw new Error('Vehicle fetch failed');
-    const data = await res.json();
-    vehicles = data;
-    updateMarkers(data);
-    updateVehicleList(data);
-    updateVehicleSelect(data);
-    document.getElementById('stat-vehicles').textContent = data.length;
-    updateDashboard(data);
-    if (medoActive) drawMedo();
-    playPositionBeep();
-    updateConnectionStatus(true);
+    const raw = await res.json();
 
-    // Detect new emergencies from vehicle status changes
-    data.forEach(v => {
+    // Detecta novas emergencias sobre os dados CRUS (posicao de patrulha do
+    // momento do chamado) ANTES de aplicar o congelamento — assim o local do
+    // chamado e a posicao real quando a emergencia comecou.
+    raw.forEach(v => {
       if (v.status === 'emergency' && !lastEmergencyIds.has(v.id)) {
         // New emergency detected — trigger alert
         showEmergencyAlert({
@@ -1931,7 +1924,7 @@ setInterval(async () => {
       }
     });
     // Update tracked emergency vehicle IDs
-    lastEmergencyIds = new Set(data.filter(v => v.status === 'emergency').map(v => v.id));
+    lastEmergencyIds = new Set(raw.filter(v => v.status === 'emergency').map(v => v.id));
 
     // Rede de seguranca (emergencias sobrepostas): a solicitante do atendimento
     // ATUAL e descongelada pelo finishEmergencyCleanup() dela. Uma solicitante
@@ -1944,6 +1937,31 @@ setInterval(async () => {
         frozenVehicles.delete(id);
       }
     });
+
+    // ALTITUDE DO CONGELAMENTO: aplica o freeze UMA vez aqui, para que a posicao
+    // congelada seja consistente em TODOS os consumidores (marcadores, Mapa do
+    // Medo, ETA e lista) — nao so no marcador. O backend serverless e stateless
+    // e, sem banco, nao tem como saber da emergencia; por isso a fonte de verdade
+    // do congelamento e este Map do frontend, valido com OU sem banco.
+    const data = raw.map(v => {
+      if (frozenVehicles.has(v.id)) {
+        const p = frozenVehicles.get(v.id);
+        // VTR congelada nao patrulha: posicao fixa no local do chamado e, para os
+        // derivados, ela esta indisponivel (em emergencia/aguardando apoio).
+        return Object.assign({}, v, { lat: p.lat, lng: p.lng, status: 'emergency' });
+      }
+      return v;
+    });
+    vehicles = data;
+
+    updateMarkers(data);
+    updateVehicleList(data);
+    updateVehicleSelect(data);
+    document.getElementById('stat-vehicles').textContent = data.length;
+    updateDashboard(data);
+    if (medoActive) drawMedo();
+    playPositionBeep();
+    updateConnectionStatus(true);
   } catch (err) {
     updateConnectionStatus(false);
   }
@@ -2198,15 +2216,10 @@ function toggleMedo() {
 map.on('moveend', () => { if (medoActive) drawMedo(); });
 
 function updateMarkers(vehicleList) {
+  // OBS: o congelamento das VTRs que acionaram emergencia (frozenVehicles) ja foi
+  // aplicado no polling, antes desta lista chegar aqui — assim marcadores, Mapa do
+  // Medo, ETA e lista compartilham EXATAMENTE a mesma posicao congelada.
   vehicleList.forEach(v => {
-    // VTR que ACIONOU a emergencia: posicao congelada no local do chamado.
-    // O polling continua mandando a posicao de patrulha, mas a viatura "parou"
-    // e fica aguardando apoio ate o fim do atendimento.
-    if (frozenVehicles.has(v.id)) {
-      const p = frozenVehicles.get(v.id);
-      v = Object.assign({}, v, { lat: p.lat, lng: p.lng });
-    }
-
     // VTR respondendo a emergencia: posicao controlada pela animacao de resposta,
     // nao deixar o polling da simulacao puxa-la de volta para a patrulha.
     const isResponder = !!respondingUnits[v.id];

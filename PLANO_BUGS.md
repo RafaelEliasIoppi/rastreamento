@@ -188,7 +188,36 @@ tornadas SEGURAS (sem construir um simulador multi-emergência completo):
   alguma. Assim nada da emergência anterior fica órfão, e a VTR solicitante
   anterior permanece congelada (sua emergência pode seguir ativa <30s); ela só é
   liberada por evento (delete) ou pelo TTL de segurança.
-- ⏳ **PENDENTE (outra frente) — Altitude do congelamento:** o "parar para aguardar
-  apoio" é conceito da simulação; hoje é um override no frontend (`updateMarkers`).
-  Ideal mover para `lib/simulation.js`, para que `/api/vehicles` já emita a posição
-  congelada e sectors/Mapa do Medo/ETA fiquem consistentes. Sendo projetado à parte.
+- ✅ **CONCLUÍDO — Altitude do congelamento.** O "parar para aguardar apoio" agora
+  é aplicado UMA vez no ponto de entrada dos dados, em vez de só no marcador.
+
+  **Investigação (fatos):**
+  - `/api/sectors` deriva de `routes.json` + `generateFleet()` — setores são
+    polígonos FIXOS de patrulha, não usam posição corrente. Não havia
+    inconsistência ali (a viatura andar não muda o setor).
+  - `lib/coverage.js` é puro (recebe `vehicles`), mas NÃO é chamado por nenhum
+    endpoint. O "Mapa do Medo" real roda 100% no frontend (`medoRisk`), iterando
+    sobre a variável global `vehicles` — que era a resposta CRUA de `/api/vehicles`
+    (posição de patrulha), enquanto o marcador aparecia congelado. Mesma coisa para
+    ETA e lista lateral. **Essa** era a inconsistência real, e ela ocorria com OU
+    sem banco.
+  - Mover o freeze só para `api/vehicles.js` NÃO resolveria, porque (a) sem banco o
+    backend não conhece a emergência e (b) os derivados do frontend leem a `vehicles`
+    global, não o override do marcador.
+
+  **Solução (mínima, cobre os dois modos):**
+  - Frontend (`public/index.html`, polling): o congelamento (`frozenVehicles`) é
+    aplicado UMA vez sobre os dados recebidos, gerando a `vehicles` global já
+    congelada (`lat/lng` no local do chamado + `status:'emergency'`). Assim
+    marcadores, Mapa do Medo, ETA e lista compartilham EXATAMENTE a mesma posição.
+    A detecção de nova emergência roda antes, sobre os dados crus, para o local do
+    chamado ser a posição real do momento. O override duplicado em `updateMarkers`
+    foi removido.
+  - Backend (`api/vehicles.js`, só COM banco): o SELECT de emergências ativas (<30s)
+    agora traz `lat,lng` e o endpoint emite a posição CONGELADA (não a de patrulha).
+    Garante consistência até para um cliente recém-carregado durante a emergência.
+  - **Modo sem banco intacto:** `isConfigured=false` faz `vehicles.js` retornar antes
+    do bloco SQL; o freeze do frontend continua sendo a fonte de verdade.
+
+  Validado: `/api/health`, `/api/vehicles`, `/api/sectors`, home → 200; `node --check`
+  e verificação dos scripts inline sem erro de sintaxe.
