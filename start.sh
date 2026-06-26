@@ -14,10 +14,15 @@ echo "  RASTREAMENTO PM — BRIGADA MILITAR/RS"
 echo "  Porto Alegre"
 echo "========================================"
 
-# Encerra qualquer servidor antigo (evita servir codigo em cache / porta presa)
-if pgrep -f "node local-server.js" >/dev/null 2>&1; then
-  echo "==> Encerrando servidor anterior..."
-  pkill -9 -f "node local-server.js" || true
+# Encerra qualquer servidor antigo (PM2, node direto, ou ocupante da porta)
+if command -v pm2 &>/dev/null && pm2 id rastreamento 2>/dev/null | grep -q '[0-9]'; then
+  echo "==> Encerrando servidor PM2..."
+  pm2 delete rastreamento 2>/dev/null || true
+  sleep 1
+fi
+if fuser "$PORT/tcp" &>/dev/null 2>&1; then
+  echo "==> Encerrando processo na porta $PORT..."
+  fuser -k "$PORT/tcp" 2>/dev/null || true
   sleep 1
 fi
 
