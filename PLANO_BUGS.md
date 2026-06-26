@@ -168,20 +168,27 @@ git push
 
 ---
 
-## Follow-ups conhecidos (FORA do escopo deste plano — não corrigidos aqui)
+## Follow-ups conhecidos — emergências sobrepostas
 
-Levantados no code-review desta sessão. O estado de emergência hoje é **global**
-(uma emergência por vez é o caso de uso real). Em cenários de **emergências
-sobrepostas** existem arestas a tratar no futuro:
+Levantados no code-review. O estado de emergência é **global** (uma emergência
+por vez é o caso de uso real). As arestas de **emergências sobrepostas** foram
+tornadas SEGURAS (sem construir um simulador multi-emergência completo):
 
-- **`frozenVehicles.clear()` é global:** ao limpar uma emergência, libera TODAS as
-  viaturas congeladas — se uma segunda emergência ainda estiver ativa, sua VTR
-  solicitante volta a patrulhar cedo. Correção futura: `frozenVehicles.delete(entry.vehicleId)`
-  por evento.
-- **`respondingUnits` / `expectedResponders` / cleanup são globais:** uma segunda
-  emergência reusa o mesmo estado e pode "sequestrar" a limpeza/animação da primeira.
-  Correção futura: isolar resposta por emergência (objeto de sessão por evento).
-- **Altitude do congelamento:** o "parar para aguardar apoio" é conceito da
-  simulação; hoje é um override no frontend (`updateMarkers`). Ideal mover para
-  `lib/simulation.js`, para que `/api/vehicles` já emita a posição congelada e
-  sectors/Mapa do Medo/ETA fiquem consistentes.
+- ✅ **CONCLUÍDO — `frozenVehicles.clear()` global → `delete` por evento.**
+  `showEmergencyAlert` agora registra `currentEmergencyVehicleId` (a solicitante
+  daquele atendimento). O `finishEmergencyCleanup` faz `frozenVehicles.delete(currentEmergencyVehicleId)`
+  em vez de `.clear()`, então limpar um atendimento não descongela a VTR de outra
+  emergência ainda ativa. Rede de segurança no polling: VTR congelada que não é a
+  atual é liberada por TTL de 30s (mesma janela do backend; vale com/sem banco).
+- ✅ **CONCLUÍDO — nova emergência não "sequestra" o atendimento anterior.**
+  Decisão: ao iniciar uma nova emergência, `showEmergencyAlert` chama
+  `finishResponseVisuals()` (extraída de `finishEmergencyCleanup`) que finaliza
+  LIMPAMENTE os visuais da anterior — cancela `cleanupTimer`, apaga rotas/animações
+  (`clearResponse`), círculo, radar, painel e onda — SEM descongelar viatura
+  alguma. Assim nada da emergência anterior fica órfão, e a VTR solicitante
+  anterior permanece congelada (sua emergência pode seguir ativa <30s); ela só é
+  liberada por evento (delete) ou pelo TTL de segurança.
+- ⏳ **PENDENTE (outra frente) — Altitude do congelamento:** o "parar para aguardar
+  apoio" é conceito da simulação; hoje é um override no frontend (`updateMarkers`).
+  Ideal mover para `lib/simulation.js`, para que `/api/vehicles` já emita a posição
+  congelada e sectors/Mapa do Medo/ETA fiquem consistentes. Sendo projetado à parte.

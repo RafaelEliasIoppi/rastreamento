@@ -1864,6 +1864,9 @@ let alertTimer = null;
 let alertCountdown = 10;
 let cleanupTimer = null;     // limpeza do atendimento (so quando todos chegam)
 let cleanupDeadline = null;
+// Qual VTR e a SOLICITANTE do atendimento em andamento. Usado no cleanup para
+// liberar (descongelar) apenas ESTA viatura, sem mexer em outra emergencia ativa.
+let currentEmergencyVehicleId = null;
 let alertCount = 0;
 let activeEmergencies = 0;
 
@@ -1929,6 +1932,18 @@ setInterval(async () => {
     });
     // Update tracked emergency vehicle IDs
     lastEmergencyIds = new Set(data.filter(v => v.status === 'emergency').map(v => v.id));
+
+    // Rede de seguranca (emergencias sobrepostas): a solicitante do atendimento
+    // ATUAL e descongelada pelo finishEmergencyCleanup() dela. Uma solicitante
+    // ANTERIOR (sobreposta) deixa de ser a atual e seria descongelada apenas se
+    // ainda tivesse atendimento — para nao ficar congelada para sempre, aplicamos
+    // um TTL de 30s (mesma janela do backend), valido com ou sem banco.
+    const FROZEN_TTL = 30000;
+    frozenVehicles.forEach((p, id) => {
+      if (id !== currentEmergencyVehicleId && Date.now() - p.since > FROZEN_TTL) {
+        frozenVehicles.delete(id);
+      }
+    });
   } catch (err) {
     updateConnectionStatus(false);
   }
@@ -2555,14 +2570,22 @@ function renderResponsePanel() {
 // EMERGENCY ALERT OVERLAY
 // ============================================
 function showEmergencyAlert(entry) {
-  // Nova emergencia cancela qualquer limpeza pendente da anterior, para nao
-  // apagar as rotas/animacoes recem-criadas no meio do caminho.
-  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+  // DECISAO (emergencias sobrepostas): o estado de resposta e global (1 atendimento
+  // por vez e o caso real). Ao iniciar uma NOVA emergencia, finalizamos LIMPAMENTE
+  // o atendimento anterior — cancelando o timer e apagando rotas/animacoes/circulo/
+  // radar/painel/onda orfaos — para nada da emergencia anterior "vazar" para esta.
+  // POReM NaO descongelamos a solicitante anterior: ela permanece congelada porque
+  // a emergencia DELA pode continuar ativa (<30s). O frozen so e removido por evento
+  // no finishEmergencyCleanup() do SEU proprio atendimento (frozenVehicles.delete).
+  finishResponseVisuals();
+
+  currentEmergencyVehicleId = entry.vehicleId;
 
   // Congela a viatura solicitante no ponto do chamado: ela "para" e aguarda
   // apoio, em vez de continuar a patrulha (simulacao deterministica seguiria
-  // movendo-a). Liberada no cleanup de dismissAlert().
-  frozenVehicles.set(entry.vehicleId, { lat: entry.lat, lng: entry.lng });
+  // movendo-a). Liberada no finishEmergencyCleanup() deste atendimento; `since`
+  // serve de TTL de seguranca para sobreposicao (ver loop de polling).
+  frozenVehicles.set(entry.vehicleId, { lat: entry.lat, lng: entry.lng, since: Date.now() });
 
   const overlay = document.getElementById('emergency-overlay');
   document.getElementById('alert-vehicle-name').textContent = entry.vehicleName;
@@ -2599,7 +2622,7 @@ function showEmergencyAlert(entry) {
   // Calculate routes from all OTHER vehicles to the emergency.
   // O OSRM resolve a MENOR rota (caminho minimo sobre o grafo viario) para
   // cada VTR; capturamos o ETA/distancia e ranqueamos a mais proxima.
-  clearResponse();
+  // (rotas/animacoes anteriores ja foram limpas por finishResponseVisuals acima)
   responseEtas = [];
   showResponsePanel(entry.vehicleId);
   // Quantas rotas vamos despachar (todas as VTRs menos a solicitante). Usado
@@ -2655,14 +2678,17 @@ function addRadarPulse(lat, lng) {
   radarMarker = L.marker([lat, lng], { icon: radarIcon, interactive: false }).addTo(map);
 }
 
-function finishEmergencyCleanup() {
+// Limpeza VISUAL de um atendimento: rotas, animacoes, painel, onda, circulo e
+// radar. NaO descongela viatura nenhuma — isso e responsabilidade do
+// finishEmergencyCleanup(), por evento. Chamada tambem ao iniciar uma nova
+// emergencia, para nao deixar nada orfao da anterior.
+function finishResponseVisuals() {
   if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
   cleanupDeadline = null;
   clearResponse();
   clearRoutes();
   hideResponsePanel();
   clearYieldWave();
-  frozenVehicles.clear(); // libera a viatura solicitante para voltar a patrulhar
   if (emergencyCircle) {
     map.removeLayer(emergencyCircle);
     emergencyCircle = null;
@@ -2670,6 +2696,17 @@ function finishEmergencyCleanup() {
   if (radarMarker) {
     map.removeLayer(radarMarker);
     radarMarker = null;
+  }
+}
+
+function finishEmergencyCleanup() {
+  finishResponseVisuals();
+  // Libera (descongela) APENAS a viatura solicitante DESTE atendimento. Antes
+  // era frozenVehicles.clear() (global), o que liberava cedo a solicitante de
+  // uma outra emergencia ainda ativa em cenario de sobreposicao.
+  if (currentEmergencyVehicleId !== null) {
+    frozenVehicles.delete(currentEmergencyVehicleId);
+    currentEmergencyVehicleId = null;
   }
 }
 
