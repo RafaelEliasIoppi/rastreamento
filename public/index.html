@@ -2207,21 +2207,25 @@ async function toggleSetores() {
 let medoLayer = null;
 let medoActive = false;
 
-// Mapa do Medo — Polígono de terra firme (exclui Guaíba)
+// Mapa do Medo — Polígono de terra firme de Porto Alegre (exclui Guaíba e lago adjacente).
+// Cobre toda a peninsula: da Zona Norte ao Extremo Sul, seguindo a orla do Guaíba.
 const MEDO_LAND = [
-  [-29.975, -51.145],
-  [-29.975, -51.220],
-  [-29.990, -51.226],
-  [-30.005, -51.230],
-  [-30.020, -51.234],
-  [-30.035, -51.236],
-  [-30.050, -51.235],
-  [-30.065, -51.230],
-  [-30.075, -51.224],
-  [-30.085, -51.216],
-  [-30.095, -51.206],
-  [-30.100, -51.196],
-  [-30.100, -51.145],
+  [-29.93, -51.07],  // NE — norte longe da costa
+  [-29.93, -51.22],  // NW — margem norte do Guaíba
+  [-29.95, -51.23],
+  [-29.97, -51.225],
+  [-29.99, -51.228],
+  [-30.01, -51.233],
+  [-30.03, -51.238],
+  [-30.05, -51.242],
+  [-30.07, -51.238],
+  [-30.09, -51.228],
+  [-30.11, -51.215],
+  [-30.13, -51.198],
+  [-30.15, -51.178],
+  [-30.17, -51.150],
+  [-30.18, -51.130],
+  [-30.18, -51.07],  // SE — sul longe da costa
 ];
 function isOnLand(lat, lng) {
   let inside = false;
@@ -2262,12 +2266,12 @@ function medoColor(r) {
 
 function drawMedo() {
   if (!medoActive) return;
-  if (medoLayer) map.removeLayer(medoLayer);
-  medoLayer = L.layerGroup().addTo(map);
+  if (medoLayer) { medoLayer.clearLayers(); } else { medoLayer = L.layerGroup().addTo(map); }
   const b = map.getBounds();
-  const COLS = 16, ROWS = 16;
+  const COLS = 24, ROWS = 24;
   const latStep = (b.getNorth() - b.getSouth()) / ROWS;
   const lngStep = (b.getEast() - b.getWest()) / COLS;
+  const cells = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const south = b.getSouth() + latStep * r;
@@ -2275,11 +2279,13 @@ function drawMedo() {
       const clat = south + latStep / 2, clng = west + lngStep / 2;
       if (!isOnLand(clat, clng)) continue;
       const risk = medoRisk(clat, clng);
-      L.rectangle([[south, west], [south + latStep, west + lngStep]], {
-        stroke: false, fillColor: medoColor(risk), fillOpacity: 0.06 + risk * 0.34
-      }).addTo(medoLayer);
+      cells.push(L.rectangle([[south, west], [south + latStep, west + lngStep]], {
+        stroke: false, fillColor: medoColor(risk), fillOpacity: 0.12 + risk * 0.48
+      }));
     }
   }
+  // Batch add para performance
+  for (const cell of cells) medoLayer.addLayer(cell);
 }
 
 function toggleMedo() {

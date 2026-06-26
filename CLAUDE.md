@@ -32,7 +32,7 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - `api/init.js` — `POST` cria a tabela `emergencies` (rodar uma vez após configurar o banco)
 - `lib/db.js` — cliente Neon (`sql`) + flag `isConfigured` (banco opcional)
 - `lib/simulation.js` — simulação **determinística** das 6 viaturas PM. Move cada VTR ao longo de **rotas de rua reais** (interpolação por tempo); mesma posição para um dado timestamp. Exporta `getAllVehiclePositions()`, `calculateForecast()`, `VEHICLES`
-- `lib/fleet.js` — **gerador da frota** PM (`generateFleet(spec)`); ajustar quantidade/categorias aqui, não na simulação
+- `lib/fleet.js` — **gerador da frota** PM (`generateFleet()` + `BPM_MAP`); 6 viaturas, **uma por BPM real de Porto Alegre** (9º/11º/19º/1º/20º/21º). Ajustar a frota = editar `BPM_MAP`, não a simulação
 - `lib/sectors.js` — **gerador dos setores** de patrulhamento (`generateSectors()`, `sectorForPoint()`); cada setor = área da rota de uma viatura (casco convexo)
 - `lib/routes.json` — poligonais de patrulha (geradas por OSRM) que mantêm as VTRs nas ruas, fora do Guaíba
 - `lib/build-routes.js` — gerador das rotas (rodar com `node lib/build-routes.js` p/ regerar)
@@ -56,6 +56,11 @@ Para rodar igual à produção: `npm run dev` (`vercel dev`, exige Vercel CLI + 
 - A tabela `emergencies` é a única fonte persistente; "veículo em emergência" = registro <30s atrás.
 
 ## Recent Changes
+
+### 2026-06-26 — Frota mapeada nos BPMs reais de Porto Alegre
+- **Frota = BPMs reais**: `lib/fleet.js` agora usa `BPM_MAP` (sem `DEFAULT_SPEC`/`nameFor`/`spec`). As 6 viaturas representam batalhões reais da Brigada Militar em POA: 9º BPM (Centro), 11º (Zona Norte), 19º (Zona Leste), 1º (Zona Sul), 20º (Zona Nordeste), 21º (Extremo Sul).
+- **Rotas/Setores espalhados pela RMPA**: `lib/build-routes.js` reposicionou as âncoras OSRM para cobrir do Extremo Norte ao Extremo Sul; `lib/routes.json` regenerado; `lib/sectors.js` (`SECTOR_META`) renomeado para os BPMs.
+- **Mapa do Medo ampliado**: `MEDO_LAND` cobre toda a península (Zona Norte → Extremo Sul, seguindo a orla); `drawMedo()` agora usa grid 24×24, `clearLayers()` + batch add (perf) e opacidade maior (`0.12 + risk*0.48`).
 
 ### 2026-06-26 — CSS Vehicle Cards & Mapa do Medo
 - **CSS vehicle cards**: removido `cursor: pointer` + `perspective`/3D hover do `.vehicle-card` que quebrava o botão SOS dentro. 3D hover removido (causava clipping do botão). `.vehicle-card-main` agora tem o hover sutil com brilho. Adicionado `min-width: 0` para evitar estouro de layout.
