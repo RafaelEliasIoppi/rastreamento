@@ -82,19 +82,21 @@ Este agente DEVE ser usado em toda tarefa deste projeto — é a regra nº1 do
   `getAllVehiclePositions()` — retorna todas as 6 no timestamp atual.
   `calculateForecast(vehicle, nowMs, horizon=30, stepSec=2)` — projeção futura sobre ruas.
   Exporta: `distanceKm, calculatePosition, calculateForecast, getAllVehiclePositions, VEHICLES, ROUTES`.
-- `lib/fleet.js` (58 linhas) — gerador programático da frota via `generateFleet(spec)`.
-  `DEFAULT_SPEC`: 2 Radiopatrulha (RP-1490, RP-1495), 2 Força Tática (FT-01 Alfa, FT-02 Bravo),
-  1 ROCAM (ROCAM-01), 1 Comando (CMD-01 CPC). Sistema de numeração: serial, nato, pad2, fixed.
-  `seed` sequencial 1..6, todos `type: 'policia'`.
+- `lib/fleet.js` (33 linhas) — gerador da frota via `generateFleet()` + `BPM_MAP`.
+  As 6 viaturas mapeiam **BPMs reais de Porto Alegre**: RP-1490 (9º BPM Centro),
+  RP-1495 (11º BPM Zona Norte), FT-01 (19º BPM Zona Leste), ROCAM-01 (1º BPM Zona Sul),
+  VTR-100 (20º BPM Zona Nordeste), VTR-101 (21º BPM Extremo Sul). Todas `kind: 'radiopatrulha'`,
+  `seed` sequencial 1..6, todos `type: 'policia'`. Ajustar a frota = editar `BPM_MAP`.
 - `lib/sectors.js` (101 linhas) — gera 6 setores de patrulhamento como polígonos
   de casco convexo (Monotone Chain/Andrew). `SECTOR_META` com nomes e cores.
   `generateSectors()` → array `{ id, name, color, routeId, vehicleId, vehicleName, center, polygon }`.
   `sectorForPoint(lat, lng, sectors)` — ray casting. `convexHull(points)`, `centroid(points)`, `pointInPolygon()`.
-- `lib/routes.json` (31.4 KB) — 6 poligonais de patrulha OSRM. IDs: `centro` (210pts),
-  `norte` (280pts), `leste` (276pts), `ipiranga` (232pts), `moinhos` (137pts), `menino` (173pts).
-  Garantem que VTRs NUNCA entrem no Guaíba.
-- `lib/build-routes.js` (71 linhas) — script para regenerar `routes.json` via OSRM API
-  (`node lib/build-routes.js`). 6 loops de âncora em avenidas reais leste do Guaíba.
+- `lib/routes.json` (~45 KB) — 6 poligonais de patrulha OSRM. IDs: `centro` (210pts),
+  `norte` (280pts), `leste` (276pts), `ipiranga` (342pts), `moinhos` (218pts), `menino` (609pts).
+  Garantem que VTRs NUNCA entrem no Guaíba. Cada rota = território de um BPM.
+- `lib/build-routes.js` (72 linhas) — script para regenerar `routes.json` via OSRM API
+  (`node lib/build-routes.js`). 6 loops de âncora cobrindo do **Extremo Norte ao Extremo Sul**
+  de POA (cada loop = um BPM), sempre em terra leste do Guaíba.
   `osrm(coordsLngLat)` → chama `router.project-osrm.org`.
 - `lib/coverage.js` (82 linhas) — cálculo do "Mapa do Medo". `RESPONSE_SPEED_KMH = 40`.
   `RISK_GOOD_MIN = 2`, `RISK_BAD_MIN = 6`. `buildGrid(bounds, cols=12, rows=12)`,
@@ -158,10 +160,12 @@ Este agente DEVE ser usado em toda tarefa deste projeto — é a regra nº1 do
   com animação smooth de 30 frames (ease-out quad).
 - **toggleVTRs():** alterna `vtrsVisible`, esconde/mostra (exceto respondedores sempre visíveis)
 - **toggleSetores():** fetch `/api/sectors` → L.layerGroup com polígonos dashArray + labels
-- **Mapa do Medo:** `toggleMedo()` + `drawMedo()` — grid 16x16 na viewport.
+- **Mapa do Medo:** `toggleMedo()` + `drawMedo()` — grid 24x24 na viewport.
+  `MEDO_LAND` (polígono de terra firme) cobre toda a península, Zona Norte → Extremo Sul;
+  `isOnLand()` (ray casting) descarta células fora da terra (não pinta o Guaíba).
   `medoRisk(lat, lng)` → minutos até viatura livre mais próxima.
   `medoColor(r)` → interpolate `#00ff88` → `#ffd000` → `#ff3b3b`.
-  Cria L.rectangle por célula com fillOpacity `0.06 + risk * 0.34`.
+  Cria L.rectangle por célula com fillOpacity `0.12 + risk * 0.48`; usa `clearLayers()` + batch add.
   Redesenha no `moveend`.
 - **Sidebar:** `.vehicle-card` para cada viatura, classe `.emergency` + pulsar vermelho.
   Efeito hover 3D perspective + holographic shimmer.
@@ -192,14 +196,14 @@ Este agente DEVE ser usado em toda tarefa deste projeto — é a regra nº1 do
 
 ## Mapeamento frota × rota × setor
 
-| seed | Viatura     | Nome                  | Rota      | Setor                        | Cor     |
-|------|-------------|-----------------------|-----------|------------------------------|---------|
-| 1    | RP-1490     | Radiopatrulha 1490    | centro    | Centro / Cidade Baixa        | #00d4ff |
-| 2    | RP-1495     | Radiopatrulha 1495    | norte     | Norte (Assis Brasil)         | #00ff88 |
-| 3    | FT-01       | Força Tática Alfa     | leste     | Leste (Partenon)             | #ffb020 |
-| 4    | FT-02       | Força Tática Bravo    | ipiranga  | Ipiranga (Arroio Dilúvio)    | #ff6ec7 |
-| 5    | ROCAM-01    | ROCAM 01              | moinhos   | Moinhos / Higienópolis       | #a78bfa |
-| 6    | CMD-01      | Comando CPC           | menino    | Menino Deus / Praia de Belas | #ff3b3b |
+| seed | Viatura  | Nome                   | Rota      | Setor                  | Cor     |
+|------|----------|------------------------|-----------|------------------------|---------|
+| 1    | RP-1490  | 9º BPM - Centro        | centro    | 9º BPM - Centro        | #00d4ff |
+| 2    | RP-1495  | 11º BPM - Zona Norte   | norte     | 11º BPM - Zona Norte   | #00ff88 |
+| 3    | FT-01    | 19º BPM - Zona Leste   | leste     | 19º BPM - Zona Leste   | #ffb020 |
+| 4    | ROCAM-01 | 1º BPM - Zona Sul      | ipiranga  | 1º BPM - Zona Sul      | #ff6ec7 |
+| 5    | VTR-100  | 20º BPM - Zona Nordeste| moinhos   | 20º BPM - Zona Nordeste| #a78bfa |
+| 6    | VTR-101  | 21º BPM - Extremo Sul  | menino    | 21º BPM - Extremo Sul  | #ff3b3b |
 
 **Velocidades base:** seed 1=38, 2=44, 3=50, 4=32, 5=38, 6=44 km/h (fórmula `32 + (seed%4)*6`).
 
